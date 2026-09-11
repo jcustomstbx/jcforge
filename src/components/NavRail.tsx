@@ -8,6 +8,7 @@ import {
   Scissors,
   type LucideIcon,
 } from "lucide-react";
+import { useClips } from "../lib/clips";
 import type { ScreenId } from "../types";
 import "./NavRail.css";
 
@@ -18,40 +19,47 @@ interface NavItem {
   badge?: string;
 }
 
-const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
-  {
-    label: "CAPTURE",
-    items: [
-      { id: "live", label: "Live session", icon: CircleDot },
-      { id: "sources", label: "Sources", icon: Plug },
-      { id: "dock", label: "OBS dock", icon: PanelRight },
-    ],
-  },
-  {
-    label: "PRODUCE",
-    items: [
-      { id: "library", label: "Clip library", icon: Film },
-      { id: "editor", label: "Clip editor", icon: Scissors },
-    ],
-  },
-  {
-    label: "SETUP",
-    items: [
-      { id: "detection", label: "Detection", icon: Activity },
-      { id: "recording", label: "Recording", icon: Disc },
-    ],
-  },
-];
-
 interface NavRailProps {
   active: ScreenId;
   onNavigate: (id: ScreenId) => void;
 }
 
 export function NavRail({ active, onNavigate }: NavRailProps) {
+  const { clips } = useClips();
+
+  const navGroups: { label: string; items: NavItem[] }[] = [
+    {
+      label: "CAPTURE",
+      items: [
+        { id: "live", label: "Live session", icon: CircleDot },
+        { id: "sources", label: "Sources", icon: Plug },
+        { id: "dock", label: "OBS dock", icon: PanelRight },
+      ],
+    },
+    {
+      label: "PRODUCE",
+      items: [
+        {
+          id: "library",
+          label: "Clip library",
+          icon: Film,
+          badge: clips.length > 0 ? String(clips.length) : undefined,
+        },
+        { id: "editor", label: "Clip editor", icon: Scissors },
+      ],
+    },
+    {
+      label: "SETUP",
+      items: [
+        { id: "detection", label: "Detection", icon: Activity },
+        { id: "recording", label: "Recording", icon: Disc },
+      ],
+    },
+  ];
+
   return (
     <nav className="nav-rail">
-      {NAV_GROUPS.map((group) => (
+      {navGroups.map((group) => (
         <div key={group.label} className="nav-rail__group">
           <div className="nav-rail__group-label">{group.label}</div>
           {group.items.map((item) => {

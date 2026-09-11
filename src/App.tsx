@@ -2,6 +2,9 @@ import { useState, type ComponentType } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { NavRail } from "./components/NavRail";
 import { ObsProvider } from "./lib/obs";
+import { ClipsProvider } from "./lib/clips";
+import { CaptureProvider } from "./lib/capture";
+import { NavigationProvider } from "./lib/navigation";
 import { LiveSession } from "./screens/LiveSession";
 import { Sources } from "./screens/Sources";
 import { ObsDock } from "./screens/ObsDock";
@@ -28,15 +31,21 @@ function App() {
 
   return (
     <ObsProvider>
-      <div className="app-shell">
-        <TitleBar />
-        <div className="app-shell__body">
-          <NavRail active={screen} onNavigate={setScreen} />
-          <main className="app-shell__content">
-            <Screen />
-          </main>
-        </div>
-      </div>
+      <ClipsProvider>
+        <CaptureProvider>
+          <NavigationProvider navigate={setScreen}>
+            <div className="app-shell">
+              <TitleBar />
+              <div className="app-shell__body">
+                <NavRail active={screen} onNavigate={setScreen} />
+                <main className="app-shell__content">
+                  <Screen />
+                </main>
+              </div>
+            </div>
+          </NavigationProvider>
+        </CaptureProvider>
+      </ClipsProvider>
     </ObsProvider>
   );
 }

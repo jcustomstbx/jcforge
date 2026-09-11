@@ -25,6 +25,7 @@ export interface ObsState {
   replayBufferActive: boolean | null;
   connect: (url?: string, password?: string) => void;
   disconnect: () => void;
+  triggerManualCapture: () => Promise<string | null>;
 }
 
 const DEFAULT_URL = "ws://127.0.0.1:4455";
@@ -97,6 +98,34 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       });
   }, [url]);
 
+  const triggerManualCapture = useCallback(async (): Promise<string | null> => {
+    const obs = obsRef.current;
+    if (!obs || status !== "connected") return null;
+    try {
+      return await new Promise<string>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          obs.off("ReplayBufferSaved", onSaved);
+          reject(
+            new Error("Timed out waiting for OBS to save the replay buffer"),
+          );
+        }, 10000);
+        const onSaved = (data: { savedReplayPath: string }) => {
+          clearTimeout(timeout);
+          resolve(data.savedReplayPath);
+        };
+        obs.once("ReplayBufferSaved", onSaved);
+        obs.call("SaveReplayBuffer").catch((err: unknown) => {
+          clearTimeout(timeout);
+          obs.off("ReplayBufferSaved", onSaved);
+          reject(err);
+        });
+      });
+    } catch (err) {
+      console.error("[obs] manual capture failed:", err);
+      return null;
+    }
+  }, [status]);
+
   const disconnect = useCallback(() => {
     obsRef.current?.disconnect();
     setStatus("disconnected");
@@ -119,6 +148,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     replayBufferActive,
     connect,
     disconnect,
+    triggerManualCapture,
   };
 
   return createElement(ObsContext.Provider, { value }, children);

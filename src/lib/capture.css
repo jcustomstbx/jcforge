@@ -1,0 +1,31 @@
+.toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.toast {
+  padding: 10px 14px;
+  border-radius: var(--radius-panel);
+  font-size: 12px;
+  font-weight: 500;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  max-width: 360px;
+}
+
+.toast--success {
+  background: #1f2a2a;
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+}
+
+.toast--error {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-control);
+  color: var(--text-secondary);
+}

@@ -1,0 +1,50 @@
+.live-session {
+  padding: 16px 20px 20px;
+}
+
+.live-session__header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.live-session__title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+}
+
+.live-session__subtitle {
+  font-size: 12.5px;
+  color: var(--text-muted-dim);
+  max-width: 480px;
+}
+
+.live-session__spacer {
+  flex: 1;
+}
+
+.live-session__mark-button {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-control);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.live-session__mark-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.live-session__mark-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
