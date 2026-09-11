@@ -15,9 +15,11 @@ dist-ssr
 # Rust / Tauri
 src-tauri/target
 
-# Sidecar binaries - too large for git (100MB+ each). Fetched by
-# scripts/fetch-ffmpeg.ps1 instead; see src-tauri/binaries/NOTICE.md.
+# Sidecar binaries and models - too large for git. Fetched/built by
+# scripts/fetch-ffmpeg.ps1 and scripts/build-whisper.ps1 instead; see
+# src-tauri/binaries/NOTICE.md.
 src-tauri/binaries/*.exe
+src-tauri/models/*.bin
 
 # Redundant copy of design_handoff_jcforge, kept locally only
 /AI-powered stream clip creator.zip

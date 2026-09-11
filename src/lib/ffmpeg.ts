@@ -24,6 +24,8 @@ export interface RenderOptions {
   outputPath: string;
   startSeconds: number;
   endSeconds: number;
+  /** Absolute path to an SRT file, already time-shifted to the trim range. */
+  captionsSrtPath?: string;
 }
 
 export interface RenderResult {
@@ -38,10 +40,22 @@ export interface RenderResult {
 // mode for now.
 const CROP_FILTER = "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920";
 
+// ffmpeg's subtitles filter treats ':' and '\' specially in its own arg
+// syntax, regardless of the OS - escape a Windows path for use inside it.
+function escapeForSubtitlesFilter(path: string): string {
+  return path.replace(/\\/g, "/").replace(/:/g, "\\:");
+}
+
+const CAPTION_STYLE =
+  "FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=90";
+
 export async function renderVertical(
   opts: RenderOptions,
 ): Promise<RenderResult> {
   const duration = Math.max(0.1, opts.endSeconds - opts.startSeconds);
+  const videoFilter = opts.captionsSrtPath
+    ? `${CROP_FILTER},subtitles='${escapeForSubtitlesFilter(opts.captionsSrtPath)}':force_style='${CAPTION_STYLE}'`
+    : CROP_FILTER;
   const args = [
     "-y",
     "-ss",
@@ -51,7 +65,7 @@ export async function renderVertical(
     "-t",
     duration.toFixed(3),
     "-vf",
-    CROP_FILTER,
+    videoFilter,
     "-c:v",
     "h264_nvenc",
     "-preset",

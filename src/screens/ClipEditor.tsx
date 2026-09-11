@@ -1,9 +1,17 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { tempDir, join } from "@tauri-apps/api/path";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClips } from "../lib/clips";
 import { useNavigation } from "../lib/navigation";
 import { renderVertical } from "../lib/ffmpeg";
+import {
+  adjustCaptionsForTrim,
+  linesToSrt,
+  transcribeClip,
+  writeTextFile,
+  type CaptionLine,
+} from "../lib/captions";
 import { formatTime } from "../lib/format";
 import { TrimBar } from "../components/TrimBar";
 import "./ClipEditor.css";
@@ -31,23 +39,37 @@ type RenderState =
   | { status: "done"; outputPath: string }
   | { status: "error"; message: string };
 
+type TranscribeState =
+  | { status: "idle" }
+  | { status: "running" }
+  | { status: "done" }
+  | { status: "error"; message: string };
+
 export function ClipEditor() {
   const nav = useNavigation();
   const { clips } = useClips();
   const clip = clips.find((c) => c.id === nav.editingClipId) ?? null;
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [openStep, setOpenStep] = useState<1 | 2>(1);
+  const [openStep, setOpenStep] = useState<1 | 2 | 3>(1);
   const [startSec, setStartSec] = useState(0);
   const [endSec, setEndSec] = useState(clip?.durationSeconds ?? 0);
   const [currentTime, setCurrentTime] = useState(0);
   const [render, setRender] = useState<RenderState>({ status: "idle" });
+  const [captionLines, setCaptionLines] = useState<CaptionLine[] | null>(
+    null,
+  );
+  const [transcribe, setTranscribe] = useState<TranscribeState>({
+    status: "idle",
+  });
 
   useEffect(() => {
     setStartSec(0);
     setEndSec(clip?.durationSeconds ?? 0);
     setCurrentTime(0);
     setRender({ status: "idle" });
+    setCaptionLines(null);
+    setTranscribe({ status: "idle" });
   }, [clip?.id]);
 
   // Loop playback within the selected trim range, so scrubbing the handles
@@ -88,14 +110,47 @@ export function ClipEditor() {
     setCurrentTime(t);
   };
 
+  const doTranscribe = async () => {
+    setTranscribe({ status: "running" });
+    try {
+      const lines = await transcribeClip(clip.path);
+      setCaptionLines(lines);
+      setTranscribe({ status: "done" });
+    } catch (err) {
+      console.error("[editor] transcribe failed:", err);
+      setTranscribe({
+        status: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  const updateCaptionText = (id: number, text: string) => {
+    setCaptionLines((lines) =>
+      lines ? lines.map((l) => (l.id === id ? { ...l, text } : l)) : lines,
+    );
+  };
+
   const doRender = async () => {
     if (!outputPath) return;
     setRender({ status: "rendering" });
+
+    let captionsSrtPath: string | undefined;
+    if (captionLines && captionLines.length > 0) {
+      const adjusted = adjustCaptionsForTrim(captionLines, startSec, endSec);
+      if (adjusted.length > 0) {
+        const dir = await tempDir();
+        captionsSrtPath = await join(dir, `jcforge_render_${Date.now()}.srt`);
+        await writeTextFile(captionsSrtPath, linesToSrt(adjusted));
+      }
+    }
+
     const result = await renderVertical({
       sourcePath: clip.path,
       outputPath,
       startSeconds: startSec,
       endSeconds: endSec,
+      captionsSrtPath,
     });
     if (result.ok) {
       setRender({ status: "done", outputPath });
@@ -150,7 +205,8 @@ export function ClipEditor() {
         <div className="clip-editor__rail">
           <div
             className={
-              "clip-editor__step" + (openStep === 1 ? " clip-editor__step--open" : "")
+              "clip-editor__step" +
+              (openStep === 1 ? " clip-editor__step--open" : "")
             }
           >
             <div
@@ -190,7 +246,8 @@ export function ClipEditor() {
 
           <div
             className={
-              "clip-editor__step" + (openStep === 2 ? " clip-editor__step--open" : "")
+              "clip-editor__step" +
+              (openStep === 2 ? " clip-editor__step--open" : "")
             }
           >
             <div
@@ -198,6 +255,75 @@ export function ClipEditor() {
               onClick={() => setOpenStep(2)}
             >
               <span className="clip-editor__step-num">2</span>
+              <div>
+                <div className="clip-editor__step-title">Captions</div>
+                <div className="clip-editor__step-summary">
+                  {captionLines
+                    ? `${captionLines.length} lines · Whisper base.en`
+                    : "Not transcribed yet"}
+                </div>
+              </div>
+              <div className="clip-editor__spacer" />
+              <span className="clip-editor__step-tag">
+                {captionLines ? captionLines.length : "—"}
+              </span>
+            </div>
+            {openStep === 2 && (
+              <div className="clip-editor__step-body">
+                <button
+                  className="clip-editor__transcribe"
+                  disabled={transcribe.status === "running"}
+                  onClick={doTranscribe}
+                >
+                  {transcribe.status === "running"
+                    ? "Transcribing…"
+                    : captionLines
+                      ? "Re-transcribe"
+                      : "Transcribe with Whisper"}
+                </button>
+                {transcribe.status === "error" && (
+                  <p className="clip-editor__note clip-editor__note--error">
+                    {transcribe.message}
+                  </p>
+                )}
+                {captionLines && captionLines.length === 0 && (
+                  <p className="clip-editor__note">
+                    No speech detected in this clip.
+                  </p>
+                )}
+                {captionLines && captionLines.length > 0 && (
+                  <div className="clip-editor__captions">
+                    {captionLines.map((line) => (
+                      <div key={line.id} className="clip-editor__caption">
+                        <span className="clip-editor__caption-time">
+                          {formatTime(line.start)}
+                        </span>
+                        <input
+                          className="clip-editor__caption-input"
+                          value={line.text}
+                          onChange={(e) =>
+                            updateCaptionText(line.id, e.target.value)
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div
+            className={
+              "clip-editor__step" +
+              (openStep === 3 ? " clip-editor__step--open" : "")
+            }
+          >
+            <div
+              className="clip-editor__step-header"
+              onClick={() => setOpenStep(3)}
+            >
+              <span className="clip-editor__step-num">3</span>
               <div>
                 <div className="clip-editor__step-title">Export</div>
                 <div className="clip-editor__step-summary">
@@ -207,7 +333,7 @@ export function ClipEditor() {
               <div className="clip-editor__spacer" />
               <span className="clip-editor__step-tag">ready</span>
             </div>
-            {openStep === 2 && (
+            {openStep === 3 && (
               <div className="clip-editor__step-body">
                 <div className="clip-editor__row">
                   <span>Container</span>
@@ -217,6 +343,14 @@ export function ClipEditor() {
                   <span>Encoder</span>
                   <span className="clip-editor__row-value">
                     NVENC · 18 Mb/s
+                  </span>
+                </div>
+                <div className="clip-editor__row">
+                  <span>Captions</span>
+                  <span className="clip-editor__row-value">
+                    {captionLines && captionLines.length > 0
+                      ? "burned in"
+                      : "none"}
                   </span>
                 </div>
                 <div className="clip-editor__row">

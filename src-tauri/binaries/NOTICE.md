@@ -13,3 +13,10 @@ These are invoked as external sidecar processes (never statically linked),
 which is the lightest form of LGPL compliance - no linking obligations
 apply. If JCForge is ever distributed, keep this notice and a copy of the
 LGPL license text alongside the binaries.
+
+`whisper-cli-x86_64-pc-windows-msvc.exe` is built from source (CPU-only,
+statically linked) from [ggml-org/whisper.cpp](https://github.com/ggml-org/whisper.cpp)
+(MIT licensed) via `scripts/build-whisper.ps1` - no prebuilt Windows
+binaries are published upstream. The model at `../models/ggml-base.en.bin`
+is the MIT-licensed ggml conversion of OpenAI's MIT-licensed Whisper
+weights, from https://huggingface.co/ggerganov/whisper.cpp.

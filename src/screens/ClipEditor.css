@@ -189,6 +189,69 @@
   margin: 0;
 }
 
+.clip-editor__note--error {
+  color: var(--alert-text);
+}
+
+.clip-editor__transcribe {
+  padding: 9px;
+  text-align: center;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-control);
+  background: var(--bg-inset);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clip-editor__transcribe:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.clip-editor__transcribe:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.clip-editor__captions {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.clip-editor__caption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.clip-editor__caption-time {
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  width: 34px;
+}
+
+.clip-editor__caption-input {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  border: 1px solid var(--border-hairline-dim);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
+.clip-editor__caption-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .clip-editor__render {
   padding: 11px;
   text-align: center;
