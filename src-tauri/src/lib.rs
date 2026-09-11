@@ -11,10 +11,14 @@ fn get_file_size(path: String) -> Result<u64, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let migrations = vec![Migration {
-        version: 1,
-        description: "create clips table",
-        sql: "CREATE TABLE clips (
+    let migrations = vec![
+        Migration {
+            version: 1,
+            description: "create clips table",
+            // NOTE: this exact string (including whitespace) is hashed by
+            // tauri-plugin-sql to verify an already-applied migration
+            // wasn't changed - do not reformat/re-indent it.
+            sql: "CREATE TABLE clips (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             path TEXT NOT NULL,
             captured_at TEXT NOT NULL,
@@ -23,8 +27,18 @@ pub fn run() {
             trigger_reason TEXT NOT NULL,
             reviewed INTEGER NOT NULL DEFAULT 0
         );",
-        kind: MigrationKind::Up,
-    }];
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 2,
+            description: "create settings table",
+            sql: "CREATE TABLE settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );",
+            kind: MigrationKind::Up,
+        },
+    ];
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())

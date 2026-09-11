@@ -1,0 +1,63 @@
+.excitement-timeline {
+  border: 1px solid var(--border-hairline);
+  border-radius: var(--radius-panel);
+  background: var(--bg-panel);
+  padding: 12px 14px 14px;
+  margin-top: 14px;
+}
+
+.excitement-timeline__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.excitement-timeline__title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.excitement-timeline__spacer {
+  flex: 1;
+}
+
+.excitement-timeline__meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+}
+
+.excitement-timeline__well {
+  position: relative;
+  height: 86px;
+  border-radius: var(--radius-well);
+  background: var(--bg-well);
+  border: 1px solid var(--track);
+  overflow: hidden;
+}
+
+.excitement-timeline__threshold-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--text-faint-dim);
+}
+
+.excitement-timeline__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.excitement-timeline__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(255, 179, 64, 0.85);
+  box-shadow: 0 0 8px rgba(255, 179, 64, 0.6);
+}

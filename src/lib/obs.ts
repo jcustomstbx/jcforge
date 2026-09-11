@@ -25,9 +25,12 @@ export interface ObsState {
   replayBufferActive: boolean | null;
   micInputName: string | null;
   micLevel: number | null;
+  sceneName: string | null;
+  sceneChangedAt: number;
   connect: (url?: string, password?: string) => void;
   disconnect: () => void;
   triggerManualCapture: () => Promise<string | null>;
+  captureScreenshot: () => Promise<string | null>;
 }
 
 const DEFAULT_URL = "ws://127.0.0.1:4455";
@@ -63,10 +66,18 @@ export function ObsProvider({ children }: { children: ReactNode }) {
   >(null);
   const [micInputName, setMicInputNameState] = useState<string | null>(null);
   const [micLevel, setMicLevel] = useState<number | null>(null);
+  const [sceneName, setSceneNameState] = useState<string | null>(null);
+  const [sceneChangedAt, setSceneChangedAt] = useState<number>(0);
+  const sceneNameRef = useRef<string | null>(null);
 
   const setMicInputName = useCallback((name: string | null) => {
     micInputNameRef.current = name;
     setMicInputNameState(name);
+  }, []);
+
+  const setSceneName = useCallback((name: string | null) => {
+    sceneNameRef.current = name;
+    setSceneNameState(name);
   }, []);
 
   useEffect(() => {
@@ -80,10 +91,16 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       setReplayBufferActive(null);
       setMicInputName(null);
       setMicLevel(null);
+      setSceneName(null);
     });
 
     obs.on("ReplayBufferStateChanged", (data) => {
       setReplayBufferActive(data.outputActive);
+    });
+
+    obs.on("CurrentProgramSceneChanged", (data) => {
+      setSceneName(data.sceneName);
+      setSceneChangedAt(Date.now());
     });
 
     obs.on("InputVolumeMeters", (data) => {
@@ -107,7 +124,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       obs.disconnect();
       obsRef.current = null;
     };
-  }, [setMicInputName]);
+  }, [setMicInputName, setSceneName]);
 
   const connect = useCallback((nextUrl?: string, password?: string) => {
     const obs = obsRef.current;
@@ -144,6 +161,12 @@ export function ObsProvider({ children }: { children: ReactNode }) {
           console.error("[obs] failed to list inputs:", err);
           setMicInputName(null);
         }
+        try {
+          const scene = await obs.call("GetCurrentProgramScene");
+          setSceneName(scene.sceneName);
+        } catch (err) {
+          console.error("[obs] failed to get current scene:", err);
+        }
       })
       .catch((err: unknown) => {
         setStatus("error");
@@ -151,7 +174,25 @@ export function ObsProvider({ children }: { children: ReactNode }) {
         setError(message);
         console.error("[obs] connect failed:", target, err);
       });
-  }, [url, setMicInputName]);
+  }, [url, setMicInputName, setSceneName]);
+
+  const captureScreenshot = useCallback(async (): Promise<string | null> => {
+    const obs = obsRef.current;
+    const scene = sceneNameRef.current;
+    if (!obs || status !== "connected" || !scene) return null;
+    try {
+      const { imageData } = await obs.call("GetSourceScreenshot", {
+        sourceName: scene,
+        imageFormat: "jpg",
+        imageWidth: 64,
+        imageCompressionQuality: 30,
+      });
+      return imageData;
+    } catch (err) {
+      console.error("[obs] screenshot failed:", err);
+      return null;
+    }
+  }, [status]);
 
   const triggerManualCapture = useCallback(async (): Promise<string | null> => {
     const obs = obsRef.current;
@@ -189,7 +230,8 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     setReplayBufferActive(null);
     setMicInputName(null);
     setMicLevel(null);
-  }, [setMicInputName]);
+    setSceneName(null);
+  }, [setMicInputName, setSceneName]);
 
   useEffect(() => {
     connect(DEFAULT_URL);
@@ -205,9 +247,12 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     replayBufferActive,
     micInputName,
     micLevel,
+    sceneName,
+    sceneChangedAt,
     connect,
     disconnect,
     triggerManualCapture,
+    captureScreenshot,
   };
 
   return createElement(ObsContext.Provider, { value }, children);

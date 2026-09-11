@@ -22,7 +22,7 @@ interface ClipRow {
 
 let dbPromise: Promise<Database> | null = null;
 
-function getDb(): Promise<Database> {
+export function getDb(): Promise<Database> {
   if (!dbPromise) dbPromise = Database.load("sqlite:jcforge.db");
   return dbPromise;
 }

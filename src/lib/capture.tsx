@@ -50,24 +50,32 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
     }, 4000);
   }, []);
 
+  // Depend on the specific fields/callbacks actually used, not the whole
+  // obs/clips context objects - those get a new identity on every render of
+  // their provider (e.g. every mic-level tick, 10-20x/sec), which would
+  // otherwise make `capture` (and everything derived from it, including the
+  // F9 hotkey listener below) churn at that same frequency.
+  const { status, replayBufferActive, triggerManualCapture } = obs;
+  const { addClip } = clips;
+
   const capture = useCallback(
     async (reason: string, successLabel: string) => {
-      if (obs.status !== "connected") {
+      if (status !== "connected") {
         pushToast("error", "Not connected to OBS");
         return;
       }
-      if (obs.replayBufferActive === false) {
+      if (replayBufferActive === false) {
         pushToast("error", "Replay buffer isn't running in OBS");
         return;
       }
       try {
-        const path = await obs.triggerManualCapture();
+        const path = await triggerManualCapture();
         if (!path) {
           pushToast("error", "Couldn't save a clip — check OBS");
           return;
         }
         const fileSizeBytes = await getFileSize(path);
-        await clips.addClip({
+        await addClip({
           path,
           capturedAt: new Date().toISOString(),
           fileSizeBytes,
@@ -83,7 +91,7 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
         );
       }
     },
-    [obs, clips, pushToast],
+    [status, replayBufferActive, triggerManualCapture, addClip, pushToast],
   );
 
   const triggerCapture = useCallback(
