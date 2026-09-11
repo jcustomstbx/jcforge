@@ -26,6 +26,16 @@ function formatSrtTime(t: number): string {
   return `${pad(h)}:${pad(m)}:${pad(s)},${pad(ms, 3)}`;
 }
 
+// Whisper emits bracketed/parenthetical tags for non-speech audio events
+// ("[music]", "[no noise]", "[BLANK_AUDIO]", "(coughing)") rather than
+// actual words - a caption line that's entirely one of these isn't
+// something a viewer should read as dialogue.
+const NON_SPEECH_TAG = /^[\[(][^\])]*[\])]$/;
+
+function isNonSpeechTag(text: string): boolean {
+  return NON_SPEECH_TAG.test(text.trim());
+}
+
 export function parseSrt(content: string): CaptionLine[] {
   const blocks = content.split(/\r?\n\r?\n/).filter((b) => b.trim());
   const lines: CaptionLine[] = [];
@@ -35,7 +45,7 @@ export function parseSrt(content: string): CaptionLine[] {
     if (!timeLine) continue;
     const [startStr, endStr] = timeLine.split("-->").map((s) => s.trim());
     const text = rows.slice(rows.indexOf(timeLine) + 1).join(" ").trim();
-    if (!text) continue;
+    if (!text || isNonSpeechTag(text)) continue;
     lines.push({
       id: lines.length + 1,
       start: parseSrtTime(startStr),
@@ -122,6 +132,7 @@ export async function transcribeClip(
     "-l",
     "en",
     "-np",
+    "-sns",
   ]).execute();
   if (whisper.code !== 0) {
     throw new Error(`Transcription failed: ${whisper.stderr.slice(-300)}`);

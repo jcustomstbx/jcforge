@@ -2,7 +2,12 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { join, tempDir } from "@tauri-apps/api/path";
 import { Command } from "@tauri-apps/plugin-shell";
 
-const WINDOW_SEC = 0.1;
+// A tighter window than the live detection loop's 100ms sampling - this
+// runs once on a whole clip's decoded audio, so there's no reason not to
+// localize the peak precisely. A coarser window meant the flash/zoom could
+// land up to ~100ms off the actual transient, which reads as "late"
+// against fast game audio.
+const WINDOW_SEC = 0.03;
 const MIN_SPACING_SEC = 1.2;
 const MAX_IMPACTS = 5;
 const PEAK_STDDEV_MULTIPLIER = 1.3;

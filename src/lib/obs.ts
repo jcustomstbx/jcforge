@@ -7,6 +7,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -24,7 +25,6 @@ export interface ObsState {
   websocketVersion: string | null;
   replayBufferActive: boolean | null;
   micInputName: string | null;
-  micLevel: number | null;
   sceneName: string | null;
   sceneChangedAt: number;
   connect: (url?: string, password?: string) => void;
@@ -49,6 +49,35 @@ interface InputListItem {
   inputKind: string;
 }
 
+// Mic level updates at 10-20Hz from OBS's InputVolumeMeters event. Routing
+// that through React context/state would re-render every useObs() consumer
+// (TitleBar, Sources, ...) that many times a second even though only the
+// detection pipeline actually needs it - measurably laggy, including input
+// lag while typing elsewhere in the app, since those components don't even
+// display mic level. A tiny external store keeps this update path outside
+// React's normal render cycle: only components that call useMicLevel()
+// (just DetectionProvider) re-render on each tick.
+let micLevelValue: number | null = null;
+const micLevelListeners = new Set<() => void>();
+
+function setMicLevelValue(value: number | null) {
+  micLevelValue = value;
+  for (const listener of micLevelListeners) listener();
+}
+
+function subscribeMicLevel(listener: () => void): () => void {
+  micLevelListeners.add(listener);
+  return () => micLevelListeners.delete(listener);
+}
+
+function getMicLevelSnapshot(): number | null {
+  return micLevelValue;
+}
+
+export function useMicLevel(): number | null {
+  return useSyncExternalStore(subscribeMicLevel, getMicLevelSnapshot);
+}
+
 const ObsContext = createContext<ObsState | null>(null);
 
 export function ObsProvider({ children }: { children: ReactNode }) {
@@ -65,7 +94,6 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     boolean | null
   >(null);
   const [micInputName, setMicInputNameState] = useState<string | null>(null);
-  const [micLevel, setMicLevel] = useState<number | null>(null);
   const [sceneName, setSceneNameState] = useState<string | null>(null);
   const [sceneChangedAt, setSceneChangedAt] = useState<number>(0);
   const sceneNameRef = useRef<string | null>(null);
@@ -90,7 +118,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       setWebsocketVersion(null);
       setReplayBufferActive(null);
       setMicInputName(null);
-      setMicLevel(null);
+      setMicLevelValue(null);
       setSceneName(null);
     });
 
@@ -117,7 +145,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       const peak = Math.max(
         ...match.inputLevelsMul.map((ch) => ch[1] ?? 0),
       );
-      setMicLevel(peak);
+      setMicLevelValue(peak);
     });
 
     return () => {
@@ -229,7 +257,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     setWebsocketVersion(null);
     setReplayBufferActive(null);
     setMicInputName(null);
-    setMicLevel(null);
+    setMicLevelValue(null);
     setSceneName(null);
   }, [setMicInputName, setSceneName]);
 
@@ -246,7 +274,6 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     websocketVersion,
     replayBufferActive,
     micInputName,
-    micLevel,
     sceneName,
     sceneChangedAt,
     connect,

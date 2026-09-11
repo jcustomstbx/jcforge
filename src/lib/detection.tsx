@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useCapture } from "./capture";
 import { useClips } from "./clips";
-import { useObs } from "./obs";
+import { useMicLevel, useObs } from "./obs";
 import { useSettings } from "./settingsContext";
 import { RollingNormalizer } from "./signal";
 import { MotionDiffer } from "./motion";
@@ -58,7 +58,8 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   const capture = useCapture();
   const settings = useSettings();
   const clips = useClips();
-  const { status, micLevel, sceneChangedAt, captureScreenshot, replayBufferActive } = obs;
+  const { status, sceneChangedAt, captureScreenshot, replayBufferActive } = obs;
+  const micLevel = useMicLevel();
   const { autoCapture } = capture;
   const { twitchChannel } = settings;
   const { clips: clipList, resolveClip } = clips;

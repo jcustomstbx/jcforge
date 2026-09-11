@@ -34,11 +34,20 @@ export function buildFlashFilter(impacts: number[]): string | null {
  * frame), so a naive time-varying crop size fails with "Error when
  * evaluating the expression" the moment it references `t`. scale, unlike
  * crop, has an explicit eval=frame mode for exactly this - scale up by a
- * time-varying factor, then crop back down to the fixed output size. */
+ * time-varying factor, then crop back down to the fixed output size.
+ *
+ * The bump uses a raised-cosine falloff (smooth derivative throughout,
+ * peaking at the impact and easing to 0 at the window edge) rather than a
+ * linear ramp, which has a sharp, mechanical-looking corner right at the
+ * peak - the cosine curve is what reads as a deliberate "punch" instead of
+ * a linear zoom. */
 export function buildZoomPunchFilter(impacts: number[]): string | null {
   if (impacts.length === 0) return null;
   const bumpSum = impacts
-    .map((t) => `max(0,1-abs(t-${t.toFixed(3)})/${ZOOM_WINDOW})`)
+    .map(
+      (t) =>
+        `(0.5*(1+cos(PI*min(abs(t-${t.toFixed(3)})/${ZOOM_WINDOW},1))))`,
+    )
     .join("+");
   const zoom = `(1+${ZOOM_AMPLITUDE}*(${bumpSum}))`;
   return `scale=w='1080*${zoom}':h='1920*${zoom}':eval=frame,crop=1080:1920`;
