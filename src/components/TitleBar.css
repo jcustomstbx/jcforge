@@ -1,0 +1,112 @@
+.title-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 40px;
+  flex: 0 0 40px;
+  padding: 0 8px 0 12px;
+  background: var(--bg-titlebar);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.title-bar__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-bar__logo {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  background: linear-gradient(140deg, var(--accent), var(--accent-deep));
+}
+
+.title-bar__name {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.title-bar__meta {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.title-bar__spacer {
+  flex: 1;
+}
+
+.title-bar__status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: var(--radius-md);
+  background: #1d2129;
+  border: 1px solid var(--border-control);
+}
+
+.title-bar__status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.title-bar__status-dot--live {
+  background: var(--accent);
+  animation: pulseDot 1.6s infinite;
+}
+
+.title-bar__status-text {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.title-bar__status--connected .title-bar__status-text {
+  color: var(--accent);
+}
+
+.title-bar__status--clickable {
+  cursor: pointer;
+}
+
+.title-bar__status--clickable:hover {
+  border-color: var(--accent);
+}
+
+.title-bar__controls {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+
+.title-bar__control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  -webkit-app-region: no-drag;
+}
+
+.title-bar__control:hover {
+  background: #1f2329;
+  color: var(--text-primary);
+}
+
+.title-bar__control--close:hover {
+  background: var(--live);
+  color: #1a0505;
+}

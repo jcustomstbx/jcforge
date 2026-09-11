@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  doc-page:not(:defined) { visibility: hidden; }
+  html, body { margin: 0; padding: 0; }
+  a { color: #0f6f63; }
+  a:hover { color: #14453f; }
+</style>
+<script src="./doc-page.js"></script>
+</helmet>
+<doc-page margin="0.8in">
+  <div style="font-family: Barlow, system-ui, sans-serif; color: #1b1d22; font-size: 15px; line-height: 1.62;">
+
+    <div style="display: flex; align-items: baseline; gap: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .14em; color: #6b7280; text-transform: uppercase; border-bottom: 1px solid #d8dbe0; padding-bottom: 9px; margin-bottom: 26px;">
+      <span style="color: #0f6f63; font-weight: 500;">JCustoms</span>
+      <span>·</span>
+      <span>Product pitch &amp; build specification</span>
+      <span style="margin-left: auto;">v1 · September 2026</span>
+    </div>
+
+    <h1 style="font-size: 40px; line-height: 1.1; font-weight: 700; letter-spacing: -.02em; margin: 0 0 12px;">JCForge</h1>
+    <p style="font-size: 19px; line-height: 1.5; color: #3c4149; margin: 0 0 30px; max-width: 30em;">A Windows app that watches your stream while you play, saves the moments worth keeping, and hands you a vertical clip a minute later.</p>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 10px; padding-top: 4px; border-top: 2px solid #1b1d22;">The problem</h2>
+    <p style="margin: 0 0 12px;">A four-hour stream contains maybe fifteen minutes worth clipping. Finding them afterwards means scrubbing the VOD, which is the least enjoyable part of streaming and the first thing that gets skipped. Most streamers know they should post daily shorts. Almost none do, because the gap between "something great happened" and "a vertical video exists" is an hour of work.</p>
+    <p style="margin: 0 0 12px;">Twitch's own clip button requires you to notice, stop, and click — during the exact moment you're least able to. Editors are expensive and slow. Existing auto-clip tools work from the finished VOD at streaming bitrate, so the output is a compressed 1080p30 re-encode of an already-compressed stream.</p>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 10px; padding-top: 4px; border-top: 2px solid #1b1d22;">What JCForge does</h2>
+    <p style="margin: 0 0 12px;">JCForge sits alongside OBS on the streamer's own PC. It listens to three signals while the stream runs — microphone level, chat velocity, and on-screen motion — and combines them into a single excitement score. When that score crosses a threshold, it tells OBS to save its replay buffer.</p>
+    <p style="margin: 0 0 12px;">Because OBS is already holding the last two minutes in memory at full local quality, the saved clip is 1440p at 120 fps, not a stream re-encode. The moment is captured from twelve seconds <em>before</em> the detection fired, so nothing important is missed while the score was still climbing.</p>
+    <p style="margin: 0 0 18px;">Clips land in a folder on the streamer's drive. A built-in editor reframes to 9:16, transcribes captions locally, and renders a finished vertical file. The streamer uploads it themselves.</p>
+
+    <div style="border: 1px solid #d8dbe0; border-left: 3px solid #0f6f63; border-radius: 3px; padding: 14px 16px; margin: 0 0 8px; background: #f7f9f8; break-inside: avoid; orphans: 3; widows: 3;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: #0f6f63; margin-bottom: 6px;">The one-sentence version</div>
+      <div style="font-size: 16px; line-height: 1.5;">AI decides <em>when</em> to clip. OBS handles <em>how</em>. The streamer only decides whether to keep it.</div>
+    </div>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 10px; padding-top: 4px; border-top: 2px solid #1b1d22;">Who it is for</h2>
+    <p style="margin: 0 0 12px;">A solo streamer on one PC, running OBS, with no editor and no second machine. Someone who already streams regularly and wants a shorts pipeline without adding an hour to their day. Everything in v1 assumes one person, one computer, and no cloud account.</p>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 14px; padding-top: 4px; border-top: 2px solid #1b1d22;">Scope of version one</h2>
+    <p style="margin: 0 0 14px;">The scope below is deliberately narrow. OBS does the video work, which removes the hardest engineering from the project entirely.</p>
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0 0 8px;">
+      <thead>
+        <tr>
+          <th style="text-align: left; padding: 8px 10px 8px 0; border-bottom: 1.5px solid #1b1d22; font-weight: 600; width: 46%;">In version one</th>
+          <th style="text-align: left; padding: 8px 0 8px 10px; border-bottom: 1.5px solid #1b1d22; font-weight: 600;">Explicitly not yet</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Capture driven entirely by OBS replay buffer</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Own capture engine or virtual camera</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Three signals: raised voice, chat spike, screen motion</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Trained game-audio cue model, facecam expression, input intensity</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Twitch chat</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">YouTube Live, Kick</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Clips saved to a local folder</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Cloud sync, sharing links, team review</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Manual upload by the streamer</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">TikTok / YouTube upload APIs (both need app review)</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Local Whisper captions</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Translation, voice cloning, auto B-roll</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Single user, single PC</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Accounts, licensing server, multi-creator agency mode</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 10px; padding-top: 4px; border-top: 2px solid #1b1d22; break-before: page;">How detection works</h2>
+    <p style="margin: 0 0 14px;">Each signal is normalised to 0–1 against its own rolling baseline for the session, then weighted and summed into a composite score. Weighting against a rolling baseline matters: a quiet streamer's raised voice should score the same as a loud streamer's raised voice.</p>
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0 0 16px;">
+      <thead>
+        <tr>
+          <th style="text-align: left; padding: 8px 10px 8px 0; border-bottom: 1.5px solid #1b1d22; font-weight: 600;">Signal</th>
+          <th style="text-align: left; padding: 8px 10px; border-bottom: 1.5px solid #1b1d22; font-weight: 600;">Measured from</th>
+          <th style="text-align: left; padding: 8px 0 8px 10px; border-bottom: 1.5px solid #1b1d22; font-weight: 600; width: 15%;">Default weight</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Raised voice</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Mic RMS peak above rolling baseline, 100 ms windows</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace;">0.85</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Chat spike</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Messages per second and emote density from Twitch IRC</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace;">0.70</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Screen motion</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Frame-to-frame delta on downscaled OBS screenshots, 2–4 fps</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace;">0.55</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 0 0 8px;">Clip shape, all user-adjustable:</p>
+    <ul style="margin: 0 0 16px; padding-left: 20px;">
+      <li style="margin-bottom: 4px;">Pre-roll 12 s — how far back from the trigger the clip starts</li>
+      <li style="margin-bottom: 4px;">Post-roll 6 s — how long after the score falls the clip continues</li>
+      <li style="margin-bottom: 4px;">Max length 60 s</li>
+      <li style="margin-bottom: 4px;">Cooldown 45 s — prevents one long fight becoming nine clips</li>
+      <li style="margin-bottom: 4px;">Threshold 0.72 composite</li>
+    </ul>
+    <p style="margin: 0 0 12px;">The user never sees raw numbers unless they open Detection. Four presets — Balanced, Hype only, Comedy, Chat-led — are weight bundles, and the sliders underneath are for people who want to tune. A backtest re-runs the current weights against the last recorded session and reports how many clips would have been proposed, so tuning has feedback instead of guesswork.</p>
+    <p style="margin: 0 0 12px;"><strong>Nothing is deleted and nothing is auto-published.</strong> Detection proposes; the streamer keeps or skips. A skipped proposal still logs its score, which is the training data for tuning later.</p>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 14px; padding-top: 4px; border-top: 2px solid #1b1d22;">The design</h2>
+    <p style="margin: 0 0 16px;">Seven screens, one window, left rail navigation grouped as Capture / Produce / Setup. The interface is built to be read out of the corner of your eye while you're playing — dark chrome, monospace numerals, no prose anywhere you'd need to stop and read. The working prototype is in the project as <strong>JCForge v2</strong>.</p>
+
+    <h3 style="font-size: 16px; font-weight: 600; margin: 22px 0 6px;">1. Live session</h3>
+    <p style="margin: 0 0 12px;">The during-stream view. Ingest preview at the top, then the excitement timeline: a line graph of the last thirty minutes with the threshold drawn as a dashed line and every triggered moment marked in amber. Below it, three live signal meters. Down the right side, caught clips appear as cards the instant they fire, each with its score, the reason it triggered, and Keep / Discard / Edit.</p>
+
+    <h3 style="font-size: 16px; font-weight: 600; margin: 22px 0 6px;">2. OBS dock</h3>
+    <p style="margin: 0 0 12px;">The same product compressed into a 300 px panel docked inside OBS, which is where it will actually be used mid-stream. One proposal at a time, a Keep and a Skip button, a waveform, three meters, and a session tally. No lists, no scrolling, nothing to read.</p>
+
+    <h3 style="font-size: 16px; font-weight: 600; margin: 22px 0 6px;">3. Sources</h3>
+    <p style="margin: 0 0 12px;">Connection state for OBS WebSocket and Twitch, the clips folder, and free space expressed as recording headroom in minutes rather than gigabytes.</p>
+
+    <h3 style="font-size: 16px; font-weight: 600; margin: 22px 0 6px;">4. Clip library</h3>
+    <p style="margin: 0 0 12px;">A grid of everything caught, newest first, each card showing duration, composite score, and which signals fired. Filters for unreviewed, high-scoring, and already rendered. High-scoring clips are marked amber so a forty-clip session still has an obvious place to start.</p>
+
+    <h3 style="font-size: 16px; font-weight: 600; margin: 22px 0 6px;">5. Clip editor</h3>
+    <p style="margin: 0 0 10px;">The screen that matters most, and the one place the design offers two directions. Both do the same four jobs — trim, reframe to 9:16, caption, render — and both are built in the prototype behind an A / B toggle.</p>
+    <ul style="margin: 0 0 12px; padding-left: 20px;">
+      <li style="margin-bottom: 6px;"><strong>A · Timeline</strong> — a conventional editor. Source frame with the tracking box on the left, vertical output in the centre, captions and audio on the right, waveform and trim handles across the bottom with the detected peak marked. Familiar to anyone who has edited before; more to build.</li>
+      <li style="margin-bottom: 6px;"><strong>B · Step rail</strong> — preview first, with a four-step rail beside it: framing, captions, audio, export. One step open at a time. Faster to build, faster to use, less control.</li>
+    </ul>
+    <p style="margin: 0 0 12px;">Recommendation: build B for v1. It is a smaller surface, it suits someone processing eight clips after a stream rather than crafting one, and a timeline can be added later without discarding it.</p>
+
+    <h3 style="font-size: 16px; font-weight: 600; margin: 22px 0 6px;">6. Detection</h3>
+    <p style="margin: 0 0 12px;">Presets, three weight sliders with plain-language notes, clip shape values, and the backtest panel.</p>
+
+    <h3 style="font-size: 16px; font-weight: 600; margin: 22px 0 6px;">7. Recording</h3>
+    <p style="margin: 0 0 12px;">Resolution, frame rate, encoder and buffer length — all of which JCForge writes into OBS rather than owning itself — plus disk usage split across clips, buffer and renders.</p>
+
+    <h3 style="font-size: 16px; font-weight: 600; margin: 26px 0 8px;">Visual language</h3>
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0 0 8px;">
+      <thead>
+        <tr>
+          <th style="text-align: left; padding: 8px 10px 8px 0; border-bottom: 1.5px solid #1b1d22; font-weight: 600; width: 26%;">Element</th>
+          <th style="text-align: left; padding: 8px 0 8px 10px; border-bottom: 1.5px solid #1b1d22; font-weight: 600;">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 7px 10px 7px 0; border-bottom: 1px solid #e4e6ea;">Surfaces</td>
+          <td style="padding: 7px 0 7px 10px; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">#0a0b0e page · #14171c panel · #23262e hairline</td>
+        </tr>
+        <tr>
+          <td style="padding: 7px 10px 7px 0; border-bottom: 1px solid #e4e6ea;">Accent</td>
+          <td style="padding: 7px 0 7px 10px; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">#3ddbc6 — state, selection, confirmation</td>
+        </tr>
+        <tr>
+          <td style="padding: 7px 10px 7px 0; border-bottom: 1px solid #e4e6ea;">Alert</td>
+          <td style="padding: 7px 0 7px 10px; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">#ffb340 — a detected moment, and nothing else</td>
+        </tr>
+        <tr>
+          <td style="padding: 7px 10px 7px 0; border-bottom: 1px solid #e4e6ea;">Type</td>
+          <td style="padding: 7px 0 7px 10px; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">Barlow 11–19px UI · IBM Plex Mono for all numerals</td>
+        </tr>
+        <tr>
+          <td style="padding: 7px 10px 7px 0; border-bottom: 1px solid #e4e6ea;">Radii</td>
+          <td style="padding: 7px 0 7px 10px; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; font-size: 13px;">4px controls · 6–8px panels</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 0 0 12px;">The rule worth keeping: amber means a moment was detected. If amber is used for anything else, the peripheral-vision reading of the dock stops working.</p>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 14px; padding-top: 4px; border-top: 2px solid #1b1d22; break-before: page;">Technical approach</h2>
+    <p style="margin: 0 0 14px;">The whole architecture rests on one decision: OBS owns video. JCForge never encodes, never captures a frame buffer, never touches NVENC. It sends OBS instructions and reads its state.</p>
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0 0 16px;">
+      <thead>
+        <tr>
+          <th style="text-align: left; padding: 8px 10px 8px 0; border-bottom: 1.5px solid #1b1d22; font-weight: 600; width: 26%;">Layer</th>
+          <th style="text-align: left; padding: 8px 0 8px 10px; border-bottom: 1.5px solid #1b1d22; font-weight: 600;">Choice and reason</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Shell</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Tauri 2 — small .exe, Rust backend for the audio and timing work, and the existing UI is already React</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Capture</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">obs-websocket v5. Set the replay buffer, call <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">SaveReplayBuffer</span> on trigger, read the saved path from the event</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Audio signal</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;"><span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">cpal</span> on the mic device, or OBS input volume meters if the mic is already routed there</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Motion signal</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">OBS <span style="font-family: 'IBM Plex Mono', monospace; font-size: 13px;">GetSourceScreenshot</span> at 2–4 fps, downscaled to ~64 px wide, mean absolute difference between frames</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Chat signal</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Twitch IRC over websocket, anonymous read is enough for message rate</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Trim &amp; render</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">FFmpeg as a bundled sidecar — trim, crop to 9:16, burn captions, output H.264</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Captions</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">whisper.cpp sidecar, runs on the finished clip only</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Storage</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">SQLite for clip metadata and score history; video files stay where OBS wrote them</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="border: 1px solid #d8dbe0; border-left: 3px solid #b8860b; border-radius: 3px; padding: 14px 16px; margin: 0 0 18px; background: #fdfaf3; break-inside: avoid; orphans: 3; widows: 3;">
+      <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: #8a6404; margin-bottom: 6px;">Known risks</div>
+      <ul style="margin: 0; padding-left: 18px; font-size: 14px;">
+        <li style="margin-bottom: 4px;">The replay buffer must be enabled in OBS with enough memory for two minutes at 1440p120 — that is several gigabytes of RAM. The app must check and warn.</li>
+        <li style="margin-bottom: 4px;">Repeated screenshot requests add load to OBS. Sample rate needs testing on a mid-range GPU while a game is running.</li>
+        <li style="margin-bottom: 4px;">Motion detection will fire on camera shake and scene transitions. Expect to tune this signal hardest.</li>
+        <li>Replay buffer saves the last N seconds at save time, so pre-roll is limited by buffer length, not choice.</li>
+      </ul>
+    </div>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 14px; padding-top: 4px; border-top: 2px solid #1b1d22;">Build order</h2>
+    <p style="margin: 0 0 14px;">Each milestone is shippable on its own and each one is useful before the next exists. Do not start detection until a clip reaches the disk by hand.</p>
+    <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0 0 8px;">
+      <thead>
+        <tr>
+          <th style="text-align: left; padding: 8px 10px 8px 0; border-bottom: 1.5px solid #1b1d22; font-weight: 600; width: 8%;">#</th>
+          <th style="text-align: left; padding: 8px 10px; border-bottom: 1.5px solid #1b1d22; font-weight: 600; width: 32%;">Milestone</th>
+          <th style="text-align: left; padding: 8px 0 8px 10px; border-bottom: 1.5px solid #1b1d22; font-weight: 600;">Done when</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; vertical-align: top;">1</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Shell and OBS connection</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">App opens, connects to OBS, shows live buffer state</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; vertical-align: top;">2</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Manual clip, end to end</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">F9 saves a clip, it appears in the library with metadata</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; vertical-align: top;">3</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Voice signal</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Mic level drives the meter and fires a clip above threshold</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; vertical-align: top;">4</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Chat and motion signals</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Composite score, cooldown, and the excitement timeline render live</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; vertical-align: top;">5</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">OBS dock</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Keep / skip works inside OBS during a real stream</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; vertical-align: top;">6</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Editor: trim and reframe</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">A 9:16 file renders to the folder via FFmpeg</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; vertical-align: top;">7</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Captions</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Whisper transcribes, lines are editable, text burns in</td>
+        </tr>
+        <tr>
+          <td style="padding: 8px 10px 8px 0; border-bottom: 1px solid #e4e6ea; font-family: 'IBM Plex Mono', monospace; vertical-align: top;">8</td>
+          <td style="padding: 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Tuning and backtest</td>
+          <td style="padding: 8px 0 8px 10px; border-bottom: 1px solid #e4e6ea; vertical-align: top;">Presets, sliders, and backtest against a recorded session</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 12px 0 0;">The honest test of the product is milestone 5. If the dock catches good moments during one real four-hour stream and the streamer keeps more than half of what it proposes, the idea works. Everything after that is polish.</p>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 10px; padding-top: 4px; border-top: 2px solid #1b1d22;">Business notes</h2>
+    <p style="margin: 0 0 12px;">Trading as JCustoms, sole trader. A sole trader can trade under any business or product name, so JCForge sits under JCustoms without needing a company — the only requirement is not implying limited-company status.</p>
+    <p style="margin: 0 0 12px;">Before committing to the name: search the UK IPO register in classes 9 and 42, then check GitHub, Steam and the Chrome Web Store for unregistered prior use, then domain and social handles. The name is used in the app title bar, the OBS dock header and the default folder paths, so changing it later is cheap but not free.</p>
+    <p style="margin: 0 0 12px;">Distribution for v1 is a signed .exe or installer from your own site. Code signing matters more than it should — an unsigned installer triggers a SmartScreen warning that will lose a meaningful share of downloads.</p>
+
+    <h2 style="font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 34px 0 10px; padding-top: 4px; border-top: 2px solid #1b1d22;">Open questions</h2>
+    <ul style="margin: 0 0 12px; padding-left: 20px;">
+      <li style="margin-bottom: 5px;">Editor direction A or B — build one, keep the other as a later upgrade.</li>
+      <li style="margin-bottom: 5px;">Does the app manage OBS's replay buffer settings, or only read them and warn when they are wrong?</li>
+      <li style="margin-bottom: 5px;">Free with a paid tier, one-off licence, or open source with paid support?</li>
+      <li style="margin-bottom: 5px;">Does the streamer ever want clips they skipped, or should skipped proposals delete their video immediately to save disk?</li>
+      <li>Is 120 fps worth the buffer memory when almost every short is published at 30 or 60?</li>
+    </ul>
+
+    <div style="margin-top: 30px; padding-top: 12px; border-top: 1px solid #d8dbe0; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #6b7280;">JCForge · design prototype: JCForge v2.dc.html · this document: pitch &amp; build specification v1</div>
+  </div>
+</doc-page>
+
+</x-dc>
+</body>
+</html>

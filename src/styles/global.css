@@ -1,0 +1,124 @@
+@import '@fontsource/barlow/400.css';
+@import '@fontsource/barlow/500.css';
+@import '@fontsource/barlow/600.css';
+@import '@fontsource/barlow/700.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+@import '@fontsource/ibm-plex-mono/600.css';
+
+:root {
+  /* Colours */
+  --bg-page: #0a0b0e;
+  --bg-window: #101216;
+  --bg-titlebar: #15181d;
+  --bg-nav-rail: #0d0f13;
+  --bg-panel: #14171c;
+  --bg-panel-raised: #181c22;
+  --bg-inset: #191d24;
+  --bg-well: #0c0e12;
+  --bg-video-well: #07080a;
+  --bg-video-well-alt: #0a0c0f;
+
+  --border-hairline: #23262e;
+  --border-hairline-dim: #21242c;
+  --border-control: #2b303a;
+  --track: #1e2229;
+
+  --accent: #3ddbc6;
+  --accent-hover: #63e6d5;
+  --accent-deep: #1d8f9e;
+  --accent-border: #2b6f66;
+  --accent-tint: rgba(61, 219, 198, 0.12);
+  --accent-on-dark: #062024;
+
+  --alert: #ffb340;
+  --alert-text: #ffd39b;
+  --alert-tint: rgba(255, 179, 64, 0.14);
+
+  --live: #ff4d4d;
+
+  --text-primary: #e7e9ee;
+  --text-bright: #eafffb;
+  --text-secondary: #c9ced8;
+  --text-secondary-dim: #aeb5c0;
+  --text-muted: #8b93a1;
+  --text-muted-dim: #7c8391;
+  --text-dim: #6d7380;
+  --text-faint: #575d69;
+  --text-faint-dim: #4a5260;
+  --text-faint-dimmer: #3c4450;
+
+  --brand-twitch: #9146ff;
+  --brand-obs: #302e3b;
+
+  /* Type */
+  --font-ui: 'Barlow', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+
+  /* Radii */
+  --radius-tag: 3px;
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-well: 6px;
+  --radius-panel: 8px;
+  --radius-window: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  height: 100%;
+}
+
+#root {
+  height: 100%;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  color: #7defdc;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #2a2d36;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
