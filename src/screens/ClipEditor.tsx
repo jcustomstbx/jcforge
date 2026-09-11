@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useClips } from "../lib/clips";
 import { useNavigation } from "../lib/navigation";
 import { renderVertical } from "../lib/ffmpeg";
+import { formatTime } from "../lib/format";
+import { TrimBar } from "../components/TrimBar";
 import "./ClipEditor.css";
 
 function filename(path: string): string {
@@ -23,13 +25,6 @@ function deriveOutputPath(sourcePath: string): string {
   return `${dir}${sep}${stem}_vertical.mp4`;
 }
 
-function formatTime(seconds: number): string {
-  const total = Math.max(0, Math.round(seconds));
-  const m = Math.floor(total / 60);
-  const s = total % 60;
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
 type RenderState =
   | { status: "idle" }
   | { status: "rendering" }
@@ -45,13 +40,31 @@ export function ClipEditor() {
   const [openStep, setOpenStep] = useState<1 | 2>(1);
   const [startSec, setStartSec] = useState(0);
   const [endSec, setEndSec] = useState(clip?.durationSeconds ?? 0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [render, setRender] = useState<RenderState>({ status: "idle" });
 
   useEffect(() => {
     setStartSec(0);
     setEndSec(clip?.durationSeconds ?? 0);
+    setCurrentTime(0);
     setRender({ status: "idle" });
   }, [clip?.id]);
+
+  // Loop playback within the selected trim range, so scrubbing the handles
+  // doubles as an in/out preview instead of needing to play the whole clip.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onTimeUpdate = () => {
+      setCurrentTime(video.currentTime);
+      if (video.currentTime >= endSec) {
+        video.currentTime = startSec;
+        if (video.paused) video.pause();
+      }
+    };
+    video.addEventListener("timeupdate", onTimeUpdate);
+    return () => video.removeEventListener("timeupdate", onTimeUpdate);
+  }, [startSec, endSec]);
 
   const videoSrc = useMemo(
     () => (clip ? convertFileSrc(clip.path) : null),
@@ -70,11 +83,9 @@ export function ClipEditor() {
     );
   }
 
-  const markStart = () => {
-    if (videoRef.current) setStartSec(videoRef.current.currentTime);
-  };
-  const markEnd = () => {
-    if (videoRef.current) setEndSec(videoRef.current.currentTime);
+  const seekTo = (t: number) => {
+    if (videoRef.current) videoRef.current.currentTime = t;
+    setCurrentTime(t);
   };
 
   const doRender = async () => {
@@ -117,15 +128,22 @@ export function ClipEditor() {
             />
           )}
           <div className="clip-editor__trim">
-            <button className="clip-editor__mark" onClick={markStart}>
-              Set in ({formatTime(startSec)})
-            </button>
-            <div className="clip-editor__trim-range">
-              {formatTime(startSec)} → {formatTime(endSec)}
+            <TrimBar
+              duration={clip.durationSeconds ?? 0}
+              start={startSec}
+              end={endSec}
+              currentTime={currentTime}
+              onChangeStart={setStartSec}
+              onChangeEnd={setEndSec}
+              onSeek={seekTo}
+            />
+            <div className="clip-editor__trim-summary">
+              <span>{formatTime(startSec)}</span>
+              <span className="clip-editor__trim-selected">
+                selected {formatTime(endSec - startSec)}
+              </span>
+              <span>{formatTime(endSec)}</span>
             </div>
-            <button className="clip-editor__mark" onClick={markEnd}>
-              Set out ({formatTime(endSec)})
-            </button>
           </div>
         </div>
 
