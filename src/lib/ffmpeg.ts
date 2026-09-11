@@ -37,6 +37,21 @@ export interface RenderResult {
   log: string;
 }
 
+/** ffmpeg's stderr always ends with a generic "Conversion failed!" trailer -
+ * the actual root-cause line (e.g. a filter expression error) usually
+ * appears well before that, so slicing the tail of the log hides exactly
+ * the part that matters. Pull out lines that look like the real error
+ * instead of just the last N characters. */
+export function summarizeFfmpegError(log: string): string {
+  const lines = log.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const errorLines = lines.filter(
+    (l) => /error/i.test(l) && !/^conversion failed/i.test(l.trim()),
+  );
+  const excerpt =
+    errorLines.length > 0 ? errorLines.join("\n") : lines.slice(-5).join("\n");
+  return excerpt.slice(0, 500);
+}
+
 // Static-center 9:16 crop: keep the full source height and take a
 // horizontally-centered vertical strip, then scale to a clean 1080x1920.
 // "Track subject" from the design mock would need real subject/face

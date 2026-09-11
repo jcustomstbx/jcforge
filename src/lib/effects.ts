@@ -22,19 +22,17 @@ export function buildFlashFilter(impacts: number[]): string | null {
     .join(",");
 }
 
-/** A brief punch-in zoom centered on each impact time, expressed as a
- * dynamic crop (in pixels of a 1080x1920 frame) re-scaled back up -
- * operates after the main crop+scale so it doesn't interact with the
- * static framing crop. */
+/** A brief punch-in zoom centered on each impact time. ffmpeg's crop filter
+ * only evaluates w/h once at init (not per-frame - only x/y track per
+ * frame), so a naive time-varying crop size fails with "Error when
+ * evaluating the expression" the moment it references `t`. scale, unlike
+ * crop, has an explicit eval=frame mode for exactly this - scale up by a
+ * time-varying factor, then crop back down to the fixed output size. */
 export function buildZoomPunchFilter(impacts: number[]): string | null {
   if (impacts.length === 0) return null;
   const bumpSum = impacts
     .map((t) => `max(0,1-abs(t-${t.toFixed(3)})/${ZOOM_WINDOW})`)
     .join("+");
   const zoom = `(1+${ZOOM_AMPLITUDE}*(${bumpSum}))`;
-  const w = `1080/${zoom}`;
-  const h = `1920/${zoom}`;
-  const x = `(1080-(${w}))/2`;
-  const y = `(1920-(${h}))/2`;
-  return `crop=w='${w}':h='${h}':x='${x}':y='${y}',scale=1080:1920`;
+  return `scale=w='1080*${zoom}':h='1920*${zoom}':eval=frame,crop=1080:1920`;
 }

@@ -4,7 +4,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClips } from "../lib/clips";
 import { useNavigation } from "../lib/navigation";
-import { renderVertical } from "../lib/ffmpeg";
+import { renderVertical, summarizeFfmpegError } from "../lib/ffmpeg";
 import {
   adjustCaptionsForTrim,
   linesToSrt,
@@ -194,7 +194,7 @@ export function ClipEditor() {
       setRender({ status: "done", outputPath });
     } else {
       console.error("[editor] render failed:", result.log);
-      setRender({ status: "error", message: result.log.slice(-400) });
+      setRender({ status: "error", message: summarizeFfmpegError(result.log) });
     }
   };
 
