@@ -1,4 +1,5 @@
 import { Command } from "@tauri-apps/plugin-shell";
+import { buildFlashFilter, buildZoomPunchFilter } from "./effects";
 
 export async function probeDuration(path: string): Promise<number | null> {
   try {
@@ -26,6 +27,9 @@ export interface RenderOptions {
   endSeconds: number;
   /** Absolute path to an SRT file, already time-shifted to the trim range. */
   captionsSrtPath?: string;
+  /** Impact timestamps (seconds, relative to the trim start) to punch a
+   * flash + zoom into during render. */
+  impactSeconds?: number[];
 }
 
 export interface RenderResult {
@@ -53,9 +57,18 @@ export async function renderVertical(
   opts: RenderOptions,
 ): Promise<RenderResult> {
   const duration = Math.max(0.1, opts.endSeconds - opts.startSeconds);
-  const videoFilter = opts.captionsSrtPath
-    ? `${CROP_FILTER},subtitles='${escapeForSubtitlesFilter(opts.captionsSrtPath)}':force_style='${CAPTION_STYLE}'`
-    : CROP_FILTER;
+
+  const stages = [CROP_FILTER];
+  const zoomFilter = buildZoomPunchFilter(opts.impactSeconds ?? []);
+  if (zoomFilter) stages.push(zoomFilter);
+  if (opts.captionsSrtPath) {
+    stages.push(
+      `subtitles='${escapeForSubtitlesFilter(opts.captionsSrtPath)}':force_style='${CAPTION_STYLE}'`,
+    );
+  }
+  const flashFilter = buildFlashFilter(opts.impactSeconds ?? []);
+  if (flashFilter) stages.push(flashFilter);
+  const videoFilter = stages.join(",");
   const args = [
     "-y",
     "-ss",

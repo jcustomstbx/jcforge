@@ -12,6 +12,7 @@ import {
   writeTextFile,
   type CaptionLine,
 } from "../lib/captions";
+import { detectImpactMoments } from "../lib/impactDetection";
 import { formatTime } from "../lib/format";
 import { TrimBar } from "../components/TrimBar";
 import "./ClipEditor.css";
@@ -45,13 +46,19 @@ type TranscribeState =
   | { status: "done" }
   | { status: "error"; message: string };
 
+type ImpactState =
+  | { status: "idle" }
+  | { status: "running" }
+  | { status: "done"; impacts: number[] }
+  | { status: "error"; message: string };
+
 export function ClipEditor() {
   const nav = useNavigation();
   const { clips } = useClips();
   const clip = clips.find((c) => c.id === nav.editingClipId) ?? null;
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [openStep, setOpenStep] = useState<1 | 2 | 3>(1);
+  const [openStep, setOpenStep] = useState<1 | 2 | 3 | 4>(1);
   const [startSec, setStartSec] = useState(0);
   const [endSec, setEndSec] = useState(clip?.durationSeconds ?? 0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -62,6 +69,10 @@ export function ClipEditor() {
   const [transcribe, setTranscribe] = useState<TranscribeState>({
     status: "idle",
   });
+  const [impactState, setImpactState] = useState<ImpactState>({
+    status: "idle",
+  });
+  const [applyEffects, setApplyEffects] = useState(true);
 
   useEffect(() => {
     setStartSec(0);
@@ -70,7 +81,14 @@ export function ClipEditor() {
     setRender({ status: "idle" });
     setCaptionLines(null);
     setTranscribe({ status: "idle" });
+    setImpactState({ status: "idle" });
   }, [clip?.id]);
+
+  // Detected impacts are relative to the current trim window - invalidate
+  // them if the trim changes so a stale set never gets rendered.
+  useEffect(() => {
+    setImpactState({ status: "idle" });
+  }, [startSec, endSec]);
 
   // Loop playback within the selected trim range, so scrubbing the handles
   // doubles as an in/out preview instead of needing to play the whole clip.
@@ -125,6 +143,20 @@ export function ClipEditor() {
     }
   };
 
+  const doDetectImpacts = async () => {
+    setImpactState({ status: "running" });
+    try {
+      const impacts = await detectImpactMoments(clip.path, startSec, endSec);
+      setImpactState({ status: "done", impacts });
+    } catch (err) {
+      console.error("[editor] impact detection failed:", err);
+      setImpactState({
+        status: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   const updateCaptionText = (id: number, text: string) => {
     setCaptionLines((lines) =>
       lines ? lines.map((l) => (l.id === id ? { ...l, text } : l)) : lines,
@@ -145,12 +177,18 @@ export function ClipEditor() {
       }
     }
 
+    const impactSeconds =
+      applyEffects && impactState.status === "done"
+        ? impactState.impacts
+        : undefined;
+
     const result = await renderVertical({
       sourcePath: clip.path,
       outputPath,
       startSeconds: startSec,
       endSeconds: endSec,
       captionsSrtPath,
+      impactSeconds,
     });
     if (result.ok) {
       setRender({ status: "done", outputPath });
@@ -325,6 +363,77 @@ export function ClipEditor() {
             >
               <span className="clip-editor__step-num">3</span>
               <div>
+                <div className="clip-editor__step-title">Effects</div>
+                <div className="clip-editor__step-summary">
+                  {impactState.status === "done"
+                    ? `${impactState.impacts.length} hype moment${impactState.impacts.length === 1 ? "" : "s"} found`
+                    : "Auto flash + zoom on hype moments"}
+                </div>
+              </div>
+              <div className="clip-editor__spacer" />
+              <span className="clip-editor__step-tag">
+                {impactState.status === "done"
+                  ? impactState.impacts.length
+                  : "—"}
+              </span>
+            </div>
+            {openStep === 3 && (
+              <div className="clip-editor__step-body">
+                <button
+                  className="clip-editor__transcribe"
+                  disabled={impactState.status === "running"}
+                  onClick={doDetectImpacts}
+                >
+                  {impactState.status === "running"
+                    ? "Analyzing…"
+                    : impactState.status === "done"
+                      ? "Re-detect moments"
+                      : "Detect hype moments"}
+                </button>
+                {impactState.status === "error" && (
+                  <p className="clip-editor__note clip-editor__note--error">
+                    {impactState.message}
+                  </p>
+                )}
+                {impactState.status === "done" &&
+                  impactState.impacts.length === 0 && (
+                    <p className="clip-editor__note">
+                      No standout moments detected in this range.
+                    </p>
+                  )}
+                {impactState.status === "done" &&
+                  impactState.impacts.length > 0 && (
+                    <label className="clip-editor__checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={applyEffects}
+                        onChange={(e) => setApplyEffects(e.target.checked)}
+                      />
+                      Flash + zoom punch at{" "}
+                      {impactState.impacts.map((t) => formatTime(t)).join(", ")}
+                    </label>
+                  )}
+                <p className="clip-editor__note">
+                  Finds the loudest moments in the clip's audio and punches a
+                  quick flash + zoom-in on each one - reuses the same signal
+                  analysis as live detection, applied to this one clip.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div
+            className={
+              "clip-editor__step" +
+              (openStep === 4 ? " clip-editor__step--open" : "")
+            }
+          >
+            <div
+              className="clip-editor__step-header"
+              onClick={() => setOpenStep(4)}
+            >
+              <span className="clip-editor__step-num">4</span>
+              <div>
                 <div className="clip-editor__step-title">Export</div>
                 <div className="clip-editor__step-summary">
                   1080×1920 · H.264 (NVENC) · saved next to the source
@@ -333,7 +442,7 @@ export function ClipEditor() {
               <div className="clip-editor__spacer" />
               <span className="clip-editor__step-tag">ready</span>
             </div>
-            {openStep === 3 && (
+            {openStep === 4 && (
               <div className="clip-editor__step-body">
                 <div className="clip-editor__row">
                   <span>Container</span>
@@ -350,6 +459,16 @@ export function ClipEditor() {
                   <span className="clip-editor__row-value">
                     {captionLines && captionLines.length > 0
                       ? "burned in"
+                      : "none"}
+                  </span>
+                </div>
+                <div className="clip-editor__row">
+                  <span>Effects</span>
+                  <span className="clip-editor__row-value">
+                    {applyEffects &&
+                    impactState.status === "done" &&
+                    impactState.impacts.length > 0
+                      ? `${impactState.impacts.length} flash + zoom`
                       : "none"}
                   </span>
                 </div>
