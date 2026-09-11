@@ -58,20 +58,28 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
       pushToast("error", "Replay buffer isn't running in OBS");
       return;
     }
-    const path = await obs.triggerManualCapture();
-    if (!path) {
-      pushToast("error", "Couldn't save a clip — check OBS");
-      return;
+    try {
+      const path = await obs.triggerManualCapture();
+      if (!path) {
+        pushToast("error", "Couldn't save a clip — check OBS");
+        return;
+      }
+      const fileSizeBytes = await getFileSize(path);
+      await clips.addClip({
+        path,
+        capturedAt: new Date().toISOString(),
+        fileSizeBytes,
+        triggerReason: "manual",
+      });
+      const filename = path.split(/[\\/]/).pop() ?? path;
+      pushToast("success", `Clip saved: ${filename}`);
+    } catch (err) {
+      console.error("[capture] failed to record clip:", err);
+      pushToast(
+        "error",
+        "OBS saved the clip, but JCForge failed to record it — see console",
+      );
     }
-    const fileSizeBytes = await getFileSize(path);
-    await clips.addClip({
-      path,
-      capturedAt: new Date().toISOString(),
-      fileSizeBytes,
-      triggerReason: "manual",
-    });
-    const filename = path.split(/[\\/]/).pop() ?? path;
-    pushToast("success", `Clip saved: ${filename}`);
   }, [obs, clips, pushToast]);
 
   useEffect(() => {
