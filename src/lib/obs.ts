@@ -1,4 +1,4 @@
-import OBSWebSocket from "obs-websocket-js";
+import OBSWebSocket, { EventSubscription } from "obs-websocket-js";
 import {
   createContext,
   createElement,
@@ -23,6 +23,8 @@ export interface ObsState {
   obsVersion: string | null;
   websocketVersion: string | null;
   replayBufferActive: boolean | null;
+  micInputName: string | null;
+  micLevel: number | null;
   connect: (url?: string, password?: string) => void;
   disconnect: () => void;
   triggerManualCapture: () => Promise<string | null>;
@@ -30,10 +32,25 @@ export interface ObsState {
 
 const DEFAULT_URL = "ws://127.0.0.1:4455";
 
+// OBS's built-in "Audio Input Capture" source kinds across platforms - used
+// to auto-pick a mic input without needing a settings UI yet.
+const MIC_INPUT_KINDS = [
+  "wasapi_input_capture",
+  "coreaudio_input_capture",
+  "pulse_input_capture",
+  "alsa_input_capture",
+];
+
+interface InputListItem {
+  inputName: string;
+  inputKind: string;
+}
+
 const ObsContext = createContext<ObsState | null>(null);
 
 export function ObsProvider({ children }: { children: ReactNode }) {
   const obsRef = useRef<OBSWebSocket | null>(null);
+  const micInputNameRef = useRef<string | null>(null);
   const [status, setStatus] = useState<ObsConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
   const [url, setUrl] = useState(DEFAULT_URL);
@@ -44,6 +61,13 @@ export function ObsProvider({ children }: { children: ReactNode }) {
   const [replayBufferActive, setReplayBufferActive] = useState<
     boolean | null
   >(null);
+  const [micInputName, setMicInputNameState] = useState<string | null>(null);
+  const [micLevel, setMicLevel] = useState<number | null>(null);
+
+  const setMicInputName = useCallback((name: string | null) => {
+    micInputNameRef.current = name;
+    setMicInputNameState(name);
+  }, []);
 
   useEffect(() => {
     const obs = new OBSWebSocket();
@@ -54,17 +78,36 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       setObsVersion(null);
       setWebsocketVersion(null);
       setReplayBufferActive(null);
+      setMicInputName(null);
+      setMicLevel(null);
     });
 
     obs.on("ReplayBufferStateChanged", (data) => {
       setReplayBufferActive(data.outputActive);
     });
 
+    obs.on("InputVolumeMeters", (data) => {
+      const target = micInputNameRef.current;
+      if (!target) return;
+      const inputs = data.inputs as unknown as Array<{
+        inputName: string;
+        inputLevelsMul: number[][];
+      }>;
+      const match = inputs.find((i) => i.inputName === target);
+      if (!match || match.inputLevelsMul.length === 0) return;
+      // inputLevelsMul[channel] = [magnitude, peak, inputPeak] per the
+      // obs-websocket protocol; take the loudest channel's peak.
+      const peak = Math.max(
+        ...match.inputLevelsMul.map((ch) => ch[1] ?? 0),
+      );
+      setMicLevel(peak);
+    });
+
     return () => {
       obs.disconnect();
       obsRef.current = null;
     };
-  }, []);
+  }, [setMicInputName]);
 
   const connect = useCallback((nextUrl?: string, password?: string) => {
     const obs = obsRef.current;
@@ -75,7 +118,9 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     obs
-      .connect(target, password)
+      .connect(target, password, {
+        eventSubscriptions: EventSubscription.All | EventSubscription.InputVolumeMeters,
+      })
       .then(async () => {
         setStatus("connected");
         const version = await obs.call("GetVersion");
@@ -89,6 +134,16 @@ export function ObsProvider({ children }: { children: ReactNode }) {
           // least once in OBS - that's not a connection failure.
           setReplayBufferActive(false);
         }
+        try {
+          const { inputs } = await obs.call("GetInputList");
+          const mic = (inputs as unknown as InputListItem[]).find((i) =>
+            MIC_INPUT_KINDS.includes(i.inputKind),
+          );
+          setMicInputName(mic?.inputName ?? null);
+        } catch (err) {
+          console.error("[obs] failed to list inputs:", err);
+          setMicInputName(null);
+        }
       })
       .catch((err: unknown) => {
         setStatus("error");
@@ -96,7 +151,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
         setError(message);
         console.error("[obs] connect failed:", target, err);
       });
-  }, [url]);
+  }, [url, setMicInputName]);
 
   const triggerManualCapture = useCallback(async (): Promise<string | null> => {
     const obs = obsRef.current;
@@ -132,7 +187,9 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     setObsVersion(null);
     setWebsocketVersion(null);
     setReplayBufferActive(null);
-  }, []);
+    setMicInputName(null);
+    setMicLevel(null);
+  }, [setMicInputName]);
 
   useEffect(() => {
     connect(DEFAULT_URL);
@@ -146,6 +203,8 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     obsVersion,
     websocketVersion,
     replayBufferActive,
+    micInputName,
+    micLevel,
     connect,
     disconnect,
     triggerManualCapture,

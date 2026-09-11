@@ -4,6 +4,7 @@ import { NavRail } from "./components/NavRail";
 import { ObsProvider } from "./lib/obs";
 import { ClipsProvider } from "./lib/clips";
 import { CaptureProvider } from "./lib/capture";
+import { VoiceSignalProvider } from "./lib/voiceSignal";
 import { NavigationProvider } from "./lib/navigation";
 import { LiveSession } from "./screens/LiveSession";
 import { Sources } from "./screens/Sources";
@@ -33,17 +34,19 @@ function App() {
     <ObsProvider>
       <ClipsProvider>
         <CaptureProvider>
-          <NavigationProvider navigate={setScreen}>
-            <div className="app-shell">
-              <TitleBar />
-              <div className="app-shell__body">
-                <NavRail active={screen} onNavigate={setScreen} />
-                <main className="app-shell__content">
-                  <Screen />
-                </main>
+          <VoiceSignalProvider>
+            <NavigationProvider navigate={setScreen}>
+              <div className="app-shell">
+                <TitleBar />
+                <div className="app-shell__body">
+                  <NavRail active={screen} onNavigate={setScreen} />
+                  <main className="app-shell__content">
+                    <Screen />
+                  </main>
+                </div>
               </div>
-            </div>
-          </NavigationProvider>
+            </NavigationProvider>
+          </VoiceSignalProvider>
         </CaptureProvider>
       </ClipsProvider>
     </ObsProvider>

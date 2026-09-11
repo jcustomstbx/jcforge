@@ -23,6 +23,7 @@ interface Toast {
 
 interface CaptureState {
   triggerCapture: () => Promise<void>;
+  autoCapture: (reason: string, label: string) => Promise<void>;
 }
 
 const CaptureContext = createContext<CaptureState | null>(null);
@@ -49,38 +50,51 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
     }, 4000);
   }, []);
 
-  const triggerCapture = useCallback(async () => {
-    if (obs.status !== "connected") {
-      pushToast("error", "Not connected to OBS");
-      return;
-    }
-    if (obs.replayBufferActive === false) {
-      pushToast("error", "Replay buffer isn't running in OBS");
-      return;
-    }
-    try {
-      const path = await obs.triggerManualCapture();
-      if (!path) {
-        pushToast("error", "Couldn't save a clip — check OBS");
+  const capture = useCallback(
+    async (reason: string, successLabel: string) => {
+      if (obs.status !== "connected") {
+        pushToast("error", "Not connected to OBS");
         return;
       }
-      const fileSizeBytes = await getFileSize(path);
-      await clips.addClip({
-        path,
-        capturedAt: new Date().toISOString(),
-        fileSizeBytes,
-        triggerReason: "manual",
-      });
-      const filename = path.split(/[\\/]/).pop() ?? path;
-      pushToast("success", `Clip saved: ${filename}`);
-    } catch (err) {
-      console.error("[capture] failed to record clip:", err);
-      pushToast(
-        "error",
-        "OBS saved the clip, but JCForge failed to record it — see console",
-      );
-    }
-  }, [obs, clips, pushToast]);
+      if (obs.replayBufferActive === false) {
+        pushToast("error", "Replay buffer isn't running in OBS");
+        return;
+      }
+      try {
+        const path = await obs.triggerManualCapture();
+        if (!path) {
+          pushToast("error", "Couldn't save a clip — check OBS");
+          return;
+        }
+        const fileSizeBytes = await getFileSize(path);
+        await clips.addClip({
+          path,
+          capturedAt: new Date().toISOString(),
+          fileSizeBytes,
+          triggerReason: reason,
+        });
+        const filename = path.split(/[\\/]/).pop() ?? path;
+        pushToast("success", `${successLabel}: ${filename}`);
+      } catch (err) {
+        console.error("[capture] failed to record clip:", err);
+        pushToast(
+          "error",
+          "OBS saved the clip, but JCForge failed to record it — see console",
+        );
+      }
+    },
+    [obs, clips, pushToast],
+  );
+
+  const triggerCapture = useCallback(
+    () => capture("manual", "Clip saved"),
+    [capture],
+  );
+
+  const autoCapture = useCallback(
+    (reason: string, label: string) => capture(reason, label),
+    [capture],
+  );
 
   useEffect(() => {
     const unlisten = listen("hotkey-f9", () => {
@@ -93,7 +107,7 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
   }, [triggerCapture]);
 
   return (
-    <CaptureContext.Provider value={{ triggerCapture }}>
+    <CaptureContext.Provider value={{ triggerCapture, autoCapture }}>
       {children}
       <div className="toast-stack">
         {toasts.map((t) => (
