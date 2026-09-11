@@ -3,23 +3,30 @@
 // manual effects timeline, so the app keeps doing this for you instead of
 // turning the editor into a full effects tool.
 
-const FLASH_OUT_DURATION = 0.04;
-const FLASH_IN_DURATION = 0.1;
+const FLASH_HALF_WINDOW = 0.06;
 
 const ZOOM_WINDOW = 0.15;
 const ZOOM_AMPLITUDE = 0.12;
 
-/** A quick fade-to-white-and-back at each impact time. Chained fade filters
- * are no-ops outside their own [st, st+d] window, so pairs can be
- * concatenated freely for multiple impacts. */
+/** A hard flash to white at each impact time, gated by `enable` rather than
+ * built from `fade`. `fade` ramps to its color and then HOLDS that state
+ * for every subsequent frame forever (it's built for a one-time fade at
+ * the start/end of a clip, not a momentary flash) - chaining a fade-out
+ * then fade-in looked right in isolation but actually left the entire
+ * rest of the video solid white from the first impact onward. Confirmed
+ * by extracting frames before/during/after the window: `lut` gated with
+ * `enable` correctly releases back to the original frame afterward, since
+ * enable-gated filters are stateless (a disabled frame just passes
+ * through unchanged) where `fade` is not. */
 export function buildFlashFilter(impacts: number[]): string | null {
   if (impacts.length === 0) return null;
-  return impacts
-    .map((t) => {
-      const outStart = Math.max(0, t - FLASH_OUT_DURATION);
-      return `fade=t=out:st=${outStart.toFixed(3)}:d=${FLASH_OUT_DURATION}:color=white,fade=t=in:st=${t.toFixed(3)}:d=${FLASH_IN_DURATION}:color=white`;
-    })
-    .join(",");
+  const windows = impacts
+    .map(
+      (t) =>
+        `between(t\\,${(t - FLASH_HALF_WINDOW).toFixed(3)}\\,${(t + FLASH_HALF_WINDOW).toFixed(3)})`,
+    )
+    .join("+");
+  return `lut=c0=255:c1=255:c2=255:enable='${windows}'`;
 }
 
 /** A brief punch-in zoom centered on each impact time. ffmpeg's crop filter
