@@ -85,7 +85,9 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       })
       .catch((err: unknown) => {
         setStatus("error");
-        setError(err instanceof Error ? err.message : String(err));
+        const message = err instanceof Error ? err.message : String(err);
+        setError(message);
+        console.error("[obs] connect failed:", target, err);
       });
   }, [url]);
 
