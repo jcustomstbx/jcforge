@@ -2,41 +2,92 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Eye, EyeOff, Minus, Square, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useObs } from "../lib/obs";
+import { useBackend } from "../lib/backend";
+import { useSettings } from "../lib/settingsContext";
 import logo from "../assets/logo.png";
 import "./TitleBar.css";
 
 const appWindow = getCurrentWindow();
 
-export function TitleBar() {
+// OBS-specific password-retry popover, split out so it only mounts (and
+// only calls useObs()) while OBS is actually the active backend - Streamlabs
+// has no ObsProvider/ObsContext to read from.
+function ObsRetryPopover({ show, onClose }: { show: boolean; onClose: () => void }) {
   const obs = useObs();
-  const [showPasswordField, setShowPasswordField] = useState(false);
   const [password, setPassword] = useState("");
   const [revealPassword, setRevealPassword] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const bufferText =
-    obs.replayBufferActive === true
-      ? "replay buffer active"
-      : obs.replayBufferActive === false
-        ? "replay buffer inactive"
-        : "replay buffer —";
-
-  const metaText =
-    obs.status === "connected"
-      ? `JCForge v0.1 · attached to OBS ${obs.obsVersion ?? ""} · ${bufferText}`
-      : obs.status === "connecting"
-        ? "JCForge v0.1 · connecting to OBS…"
-        : obs.status === "error"
-          ? "JCForge v0.1 · OBS connection failed"
-          : "JCForge v0.1 · not attached to OBS";
-
-  const canRetry = obs.status === "disconnected" || obs.status === "error";
+  if (!show) return null;
 
   const submitPassword = () => {
     const trimmed = password.trim();
     obs.connect(undefined, trimmed || undefined);
-    setShowPasswordField(false);
+    onClose();
   };
+
+  return (
+    <div className="title-bar__password-popover">
+      <div className="title-bar__password-label">
+        OBS WebSocket password (if required)
+      </div>
+      <div className="title-bar__password-row">
+        <input
+          ref={inputRef}
+          type={revealPassword ? "text" : "password"}
+          className="title-bar__password-input"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") submitPassword();
+            if (e.key === "Escape") onClose();
+          }}
+          placeholder="leave blank if none"
+          autoFocus
+        />
+        <button
+          type="button"
+          className="title-bar__password-reveal"
+          aria-label={revealPassword ? "Hide password" : "Show password"}
+          onClick={() => setRevealPassword((v) => !v)}
+        >
+          {revealPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+        </button>
+        <button className="title-bar__password-submit" onClick={submitPassword}>
+          Connect
+        </button>
+      </div>
+      {obs.error && <div className="title-bar__password-error">{obs.error}</div>}
+    </div>
+  );
+}
+
+export function TitleBar() {
+  const backend = useBackend();
+  const settings = useSettings();
+  const isObs = settings.recordingBackend !== "streamlabs";
+  const backendLabel = isObs ? "OBS" : "Streamlabs";
+  const [showPasswordField, setShowPasswordField] = useState(false);
+
+  const bufferText =
+    backend.replayBufferActive === true
+      ? "replay buffer active"
+      : backend.replayBufferActive === false
+        ? "replay buffer inactive"
+        : "replay buffer —";
+
+  const metaText =
+    backend.status === "connected"
+      ? `JCForge v0.1 · attached to ${backendLabel} · ${bufferText}`
+      : backend.status === "connecting"
+        ? `JCForge v0.1 · connecting to ${backendLabel}…`
+        : backend.status === "error"
+          ? `JCForge v0.1 · ${backendLabel} connection failed`
+          : `JCForge v0.1 · not attached to ${backendLabel}`;
+
+  const canRetry =
+    isObs &&
+    (backend.status === "disconnected" || backend.status === "error");
 
   return (
     <div className="title-bar" data-tauri-drag-region>
@@ -50,74 +101,42 @@ export function TitleBar() {
         <div
           className={
             "title-bar__status" +
-            (obs.status === "connected"
+            (backend.status === "connected"
               ? " title-bar__status--connected"
               : "") +
             (canRetry ? " title-bar__status--clickable" : "")
           }
-          title={obs.error ?? undefined}
+          title={backend.error ?? undefined}
           onClick={() => {
             if (!canRetry) return;
             setShowPasswordField((v) => !v);
-            requestAnimationFrame(() => inputRef.current?.focus());
           }}
         >
           <span
             className={
               "title-bar__status-dot" +
-              (obs.status === "connected"
+              (backend.status === "connected"
                 ? " title-bar__status-dot--live"
                 : "")
             }
           />
           <span className="title-bar__status-text">
-            {obs.status === "connected"
-              ? "OBS CONNECTED"
-              : obs.status === "connecting"
+            {backend.status === "connected"
+              ? `${backendLabel.toUpperCase()} CONNECTED`
+              : backend.status === "connecting"
                 ? "CONNECTING"
-                : obs.status === "error"
-                  ? "RETRY CONNECTION"
-                  : "OBS DISCONNECTED"}
+                : backend.status === "error"
+                  ? canRetry
+                    ? "RETRY CONNECTION"
+                    : `${backendLabel.toUpperCase()} ERROR`
+                  : `${backendLabel.toUpperCase()} DISCONNECTED`}
           </span>
         </div>
-        {showPasswordField && canRetry && (
-          <div className="title-bar__password-popover">
-            <div className="title-bar__password-label">
-              OBS WebSocket password (if required)
-            </div>
-            <div className="title-bar__password-row">
-              <input
-                ref={inputRef}
-                type={revealPassword ? "text" : "password"}
-                className="title-bar__password-input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submitPassword();
-                  if (e.key === "Escape") setShowPasswordField(false);
-                }}
-                placeholder="leave blank if none"
-                autoFocus
-              />
-              <button
-                type="button"
-                className="title-bar__password-reveal"
-                aria-label={revealPassword ? "Hide password" : "Show password"}
-                onClick={() => setRevealPassword((v) => !v)}
-              >
-                {revealPassword ? <EyeOff size={13} /> : <Eye size={13} />}
-              </button>
-              <button
-                className="title-bar__password-submit"
-                onClick={submitPassword}
-              >
-                Connect
-              </button>
-            </div>
-            {obs.error && (
-              <div className="title-bar__password-error">{obs.error}</div>
-            )}
-          </div>
+        {isObs && (
+          <ObsRetryPopover
+            show={showPasswordField && canRetry}
+            onClose={() => setShowPasswordField(false)}
+          />
         )}
       </div>
       <div className="title-bar__controls">

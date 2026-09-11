@@ -1,10 +1,12 @@
-import { useState, type ComponentType } from "react";
+import { useState, type ComponentType, type ReactNode } from "react";
 import { TitleBar } from "./components/TitleBar";
 import { NavRail } from "./components/NavRail";
 import { ObsProvider } from "./lib/obs";
+import { StreamlabsProvider } from "./lib/streamlabs";
+import { useCpalMicCapture } from "./lib/micCapture";
 import { ClipsProvider } from "./lib/clips";
 import { CaptureProvider } from "./lib/capture";
-import { SettingsProvider } from "./lib/settingsContext";
+import { SettingsProvider, useSettings } from "./lib/settingsContext";
 import { DetectionProvider } from "./lib/detection";
 import { NavigationProvider } from "./lib/navigation";
 import { LiveSession } from "./screens/LiveSession";
@@ -27,15 +29,31 @@ const SCREENS: Record<ScreenId, ComponentType> = {
   recording: Recording,
 };
 
+// Mounts whichever recording backend is selected in settings, defaulting to
+// OBS while settings are still loading. Direct mic capture (cpal) only runs
+// under Streamlabs - OBS's own InputVolumeMeters event covers voice level.
+function BackendRouter({ children }: { children: ReactNode }) {
+  const settings = useSettings();
+  const useStreamlabs =
+    !settings.loading && settings.recordingBackend === "streamlabs";
+
+  useCpalMicCapture(useStreamlabs);
+
+  if (useStreamlabs) {
+    return <StreamlabsProvider>{children}</StreamlabsProvider>;
+  }
+  return <ObsProvider>{children}</ObsProvider>;
+}
+
 function App() {
   const [screen, setScreen] = useState<ScreenId>("live");
   const Screen = SCREENS[screen];
 
   return (
-    <ObsProvider>
-      <ClipsProvider>
-        <CaptureProvider>
-          <SettingsProvider>
+    <SettingsProvider>
+      <BackendRouter>
+        <ClipsProvider>
+          <CaptureProvider>
             <DetectionProvider>
               <NavigationProvider navigate={setScreen}>
                 <div className="app-shell">
@@ -49,10 +67,10 @@ function App() {
                 </div>
               </NavigationProvider>
             </DetectionProvider>
-          </SettingsProvider>
-        </CaptureProvider>
-      </ClipsProvider>
-    </ObsProvider>
+          </CaptureProvider>
+        </ClipsProvider>
+      </BackendRouter>
+    </SettingsProvider>
   );
 }
 

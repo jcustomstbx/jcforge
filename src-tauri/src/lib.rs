@@ -2,6 +2,9 @@ use tauri::Emitter;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_sql::{Migration, MigrationKind};
 
+mod mic_capture;
+use mic_capture::{start_mic_capture, stop_mic_capture};
+
 #[tauri::command]
 fn get_file_size(path: String) -> Result<u64, String> {
     std::fs::metadata(&path)
@@ -27,6 +30,46 @@ fn read_text_file(path: String) -> Result<String, String> {
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
+const VIDEO_EXTENSIONS: [&str; 6] = ["mp4", "mkv", "flv", "mov", "avi", "webm"];
+
+// Streamlabs' remote-control API has no way to ask where a replay was just
+// saved (confirmed: IStreamingState has no path field) - so after calling
+// saveReplay() we watch its configured output folder for the newest video
+// file that appeared after the call, the same workaround third-party tools
+// use for this exact gap.
+#[tauri::command]
+fn find_newest_file_since(dir: String, after_epoch_ms: u64) -> Result<Option<String>, String> {
+    let after = std::time::UNIX_EPOCH + std::time::Duration::from_millis(after_epoch_ms);
+    let mut newest: Option<(std::time::SystemTime, String)> = None;
+
+    let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_video = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| VIDEO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+            .unwrap_or(false);
+        if !is_video {
+            continue;
+        }
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        let Ok(modified) = metadata.modified() else {
+            continue;
+        };
+        if modified < after {
+            continue;
+        }
+        if newest.as_ref().map(|(t, _)| modified > *t).unwrap_or(true) {
+            newest = Some((modified, path.to_string_lossy().to_string()));
+        }
+    }
+
+    Ok(newest.map(|(_, path)| path))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -96,7 +139,10 @@ pub fn run() {
             path_exists,
             delete_file,
             read_text_file,
-            write_text_file
+            write_text_file,
+            find_newest_file_since,
+            start_mic_capture,
+            stop_mic_capture
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

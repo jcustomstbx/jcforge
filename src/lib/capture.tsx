@@ -10,7 +10,8 @@ import {
   type ReactNode,
 } from "react";
 import { useClips } from "./clips";
-import { useObs } from "./obs";
+import { useBackend } from "./backend";
+import { useSettings } from "./settingsContext";
 import { probeDuration } from "./ffmpeg";
 import "./capture.css";
 
@@ -38,8 +39,9 @@ async function getFileSize(path: string): Promise<number | null> {
 }
 
 export function CaptureProvider({ children }: { children: ReactNode }) {
-  const obs = useObs();
+  const backend = useBackend();
   const clips = useClips();
+  const settings = useSettings();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextToastId = useRef(0);
 
@@ -52,27 +54,30 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Depend on the specific fields/callbacks actually used, not the whole
-  // obs/clips context objects - those get a new identity on every render of
-  // their provider (e.g. every mic-level tick, 10-20x/sec), which would
-  // otherwise make `capture` (and everything derived from it, including the
-  // F9 hotkey listener below) churn at that same frequency.
-  const { status, replayBufferActive, triggerManualCapture } = obs;
+  // backend/clips context objects - those get a new identity on every
+  // render of their provider (e.g. every mic-level tick, 10-20x/sec until
+  // that was moved out of context - keeping this narrow either way), which
+  // would otherwise make `capture` (and everything derived from it,
+  // including the F9 hotkey listener below) churn at that same frequency.
+  const { status, replayBufferActive, triggerManualCapture } = backend;
   const { addClip } = clips;
+  const backendLabel =
+    settings.recordingBackend === "streamlabs" ? "Streamlabs" : "OBS";
 
   const capture = useCallback(
     async (reason: string, successLabel: string): Promise<number | null> => {
       if (status !== "connected") {
-        pushToast("error", "Not connected to OBS");
+        pushToast("error", `Not connected to ${backendLabel}`);
         return null;
       }
       if (replayBufferActive === false) {
-        pushToast("error", "Replay buffer isn't running in OBS");
+        pushToast("error", `Replay buffer isn't running in ${backendLabel}`);
         return null;
       }
       try {
         const path = await triggerManualCapture();
         if (!path) {
-          pushToast("error", "Couldn't save a clip — check OBS");
+          pushToast("error", `Couldn't save a clip — check ${backendLabel}`);
           return null;
         }
         const [fileSizeBytes, durationSeconds] = await Promise.all([
@@ -98,7 +103,14 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
         return null;
       }
     },
-    [status, replayBufferActive, triggerManualCapture, addClip, pushToast],
+    [
+      status,
+      replayBufferActive,
+      triggerManualCapture,
+      addClip,
+      pushToast,
+      backendLabel,
+    ],
   );
 
   const triggerCapture = useCallback(async () => {

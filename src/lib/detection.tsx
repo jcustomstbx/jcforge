@@ -9,7 +9,8 @@ import {
 } from "react";
 import { useCapture } from "./capture";
 import { useClips } from "./clips";
-import { useMicLevel, useObs } from "./obs";
+import { useBackend } from "./backend";
+import { useMicLevel } from "./micLevelStore";
 import { useSettings } from "./settingsContext";
 import { RollingNormalizer } from "./signal";
 import { MotionDiffer } from "./motion";
@@ -54,11 +55,17 @@ interface DetectionState {
 const DetectionContext = createContext<DetectionState | null>(null);
 
 export function DetectionProvider({ children }: { children: ReactNode }) {
-  const obs = useObs();
+  const backend = useBackend();
   const capture = useCapture();
   const settings = useSettings();
   const clips = useClips();
-  const { status, sceneChangedAt, captureScreenshot, replayBufferActive } = obs;
+  const {
+    status,
+    sceneChangedAt,
+    captureScreenshot,
+    replayBufferActive,
+    supportsMotion,
+  } = backend;
   const micLevel = useMicLevel();
   const { autoCapture } = capture;
   const { twitchChannel } = settings;
@@ -159,11 +166,13 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
 
     const interval = setInterval(async () => {
       let motionN = 0;
-      const shot = await captureScreenshot();
-      if (shot) {
-        const delta = await motionDifferRef.current.diff(shot);
-        motionN = motionNormRef.current!.push(delta);
-        setMotionScore(motionN);
+      if (supportsMotion) {
+        const shot = await captureScreenshot();
+        if (shot) {
+          const delta = await motionDifferRef.current.diff(shot);
+          motionN = motionNormRef.current!.push(delta);
+          setMotionScore(motionN);
+        }
       }
 
       const now = Date.now();
@@ -233,6 +242,7 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
     replayBufferActive,
     keptCount,
     skippedCount,
+    supportsMotion,
   ]);
 
   return (

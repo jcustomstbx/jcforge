@@ -1,5 +1,8 @@
+import type { ReactNode } from "react";
 import { useCapture } from "../lib/capture";
 import { useObs } from "../lib/obs";
+import { useBackend } from "../lib/backend";
+import { useSettings } from "../lib/settingsContext";
 import { useDetection } from "../lib/detection";
 import { ExcitementTimeline } from "../components/ExcitementTimeline";
 import "./LiveSession.css";
@@ -11,7 +14,7 @@ function Meter({
 }: {
   label: string;
   value: number;
-  caption?: string;
+  caption?: ReactNode;
 }) {
   return (
     <div className="signal-meter">
@@ -33,11 +36,23 @@ function Meter({
   );
 }
 
-export function LiveSession() {
+// OBS reports which mic input it's tracking - split out so it only mounts
+// (and only calls useObs()) while OBS is the active backend.
+function ObsVoiceCaption() {
   const obs = useObs();
+  if (obs.micInputName) return <>tracking "{obs.micInputName}"</>;
+  if (obs.status === "connected") return <>no mic input found in OBS</>;
+  return <>connect to OBS to track mic level</>;
+}
+
+export function LiveSession() {
+  const backend = useBackend();
+  const settings = useSettings();
   const capture = useCapture();
   const detection = useDetection();
-  const disabled = obs.status !== "connected";
+  const isObs = settings.recordingBackend !== "streamlabs";
+  const backendLabel = isObs ? "OBS" : "Streamlabs";
+  const disabled = backend.status !== "connected";
 
   return (
     <div className="live-session">
@@ -52,7 +67,7 @@ export function LiveSession() {
           className="live-session__mark-button"
           disabled={disabled}
           onClick={() => capture.triggerCapture()}
-          title={disabled ? "Connect to OBS first" : undefined}
+          title={disabled ? `Connect to ${backendLabel} first` : undefined}
         >
           Mark manually (F9)
         </button>
@@ -63,11 +78,13 @@ export function LiveSession() {
           label="Raised voice"
           value={detection.voiceScore}
           caption={
-            obs.micInputName
-              ? `tracking "${obs.micInputName}"`
-              : obs.status === "connected"
-                ? "no mic input found in OBS"
-                : "connect to OBS to track mic level"
+            isObs ? (
+              <ObsVoiceCaption />
+            ) : backend.status === "connected" ? (
+              "capturing mic directly"
+            ) : (
+              "connect to Streamlabs to track mic level"
+            )
           }
         />
         <Meter
@@ -82,7 +99,13 @@ export function LiveSession() {
         <Meter
           label="Screen motion"
           value={detection.motionScore}
-          caption={obs.sceneName ? `scene "${obs.sceneName}"` : undefined}
+          caption={
+            backend.sceneName
+              ? `scene "${backend.sceneName}"`
+              : !isObs
+                ? "motion detection needs OBS"
+                : undefined
+          }
         />
       </div>
 
