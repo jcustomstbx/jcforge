@@ -9,6 +9,16 @@ fn get_file_size(path: String) -> Result<u64, String> {
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn path_exists(path: String) -> bool {
+    std::path::Path::new(&path).exists()
+}
+
+#[tauri::command]
+fn delete_file(path: String) -> Result<(), String> {
+    std::fs::remove_file(&path).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let migrations = vec![
@@ -38,6 +48,12 @@ pub fn run() {
             );",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 3,
+            description: "add kept column to clips",
+            sql: "ALTER TABLE clips ADD COLUMN kept INTEGER;",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -64,7 +80,11 @@ pub fn run() {
             }
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_file_size])
+        .invoke_handler(tauri::generate_handler![
+            get_file_size,
+            path_exists,
+            delete_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

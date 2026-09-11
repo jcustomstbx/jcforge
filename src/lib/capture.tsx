@@ -23,7 +23,7 @@ interface Toast {
 
 interface CaptureState {
   triggerCapture: () => Promise<void>;
-  autoCapture: (reason: string, label: string) => Promise<void>;
+  autoCapture: (reason: string, label: string) => Promise<number | null>;
 }
 
 const CaptureContext = createContext<CaptureState | null>(null);
@@ -59,23 +59,23 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
   const { addClip } = clips;
 
   const capture = useCallback(
-    async (reason: string, successLabel: string) => {
+    async (reason: string, successLabel: string): Promise<number | null> => {
       if (status !== "connected") {
         pushToast("error", "Not connected to OBS");
-        return;
+        return null;
       }
       if (replayBufferActive === false) {
         pushToast("error", "Replay buffer isn't running in OBS");
-        return;
+        return null;
       }
       try {
         const path = await triggerManualCapture();
         if (!path) {
           pushToast("error", "Couldn't save a clip — check OBS");
-          return;
+          return null;
         }
         const fileSizeBytes = await getFileSize(path);
-        await addClip({
+        const id = await addClip({
           path,
           capturedAt: new Date().toISOString(),
           fileSizeBytes,
@@ -83,21 +83,22 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
         });
         const filename = path.split(/[\\/]/).pop() ?? path;
         pushToast("success", `${successLabel}: ${filename}`);
+        return id;
       } catch (err) {
         console.error("[capture] failed to record clip:", err);
         pushToast(
           "error",
           "OBS saved the clip, but JCForge failed to record it — see console",
         );
+        return null;
       }
     },
     [status, replayBufferActive, triggerManualCapture, addClip, pushToast],
   );
 
-  const triggerCapture = useCallback(
-    () => capture("manual", "Clip saved"),
-    [capture],
-  );
+  const triggerCapture = useCallback(async () => {
+    await capture("manual", "Clip saved");
+  }, [capture]);
 
   const autoCapture = useCallback(
     (reason: string, label: string) => capture(reason, label),

@@ -1,5 +1,5 @@
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { FolderOpen } from "lucide-react";
+import { FolderOpen, Trash2 } from "lucide-react";
 import { useClips } from "../lib/clips";
 import { useNavigation } from "../lib/navigation";
 import type { Clip } from "../lib/db";
@@ -27,6 +27,19 @@ function filename(path: string): string {
 
 function ClipCard({ clip }: { clip: Clip }) {
   const nav = useNavigation();
+  const clips = useClips();
+
+  const handleDelete = () => {
+    if (
+      !window.confirm(
+        `Delete "${filename(clip.path)}"? This removes the video file from disk too.`,
+      )
+    ) {
+      return;
+    }
+    clips.removeClip(clip.id, true);
+  };
+
   return (
     <div className="clip-card">
       <div className="clip-card__thumb">
@@ -53,6 +66,13 @@ function ClipCard({ clip }: { clip: Clip }) {
           >
             <FolderOpen size={13} />
           </button>
+          <button
+            className="clip-card__delete"
+            title="Delete clip"
+            onClick={handleDelete}
+          >
+            <Trash2 size={13} />
+          </button>
         </div>
       </div>
     </div>
@@ -60,7 +80,7 @@ function ClipCard({ clip }: { clip: Clip }) {
 }
 
 export function ClipLibrary() {
-  const { clips, loading } = useClips();
+  const { clips, loading, refresh } = useClips();
 
   return (
     <div className="clip-library">
@@ -69,6 +89,10 @@ export function ClipLibrary() {
         <span className="clip-library__count">
           {loading ? "loading…" : `${clips.length} clips`}
         </span>
+        <div className="clip-library__spacer" />
+        <button className="clip-library__refresh" onClick={() => refresh()}>
+          Refresh
+        </button>
       </div>
       {!loading && clips.length === 0 && (
         <div className="clip-library__empty">

@@ -1,3 +1,4 @@
+import { emit, listen } from "@tauri-apps/api/event";
 import {
   createContext,
   useContext,
@@ -7,11 +8,18 @@ import {
   type ReactNode,
 } from "react";
 import { useCapture } from "./capture";
+import { useClips } from "./clips";
 import { useObs } from "./obs";
 import { useSettings } from "./settingsContext";
 import { RollingNormalizer } from "./signal";
 import { MotionDiffer } from "./motion";
 import { TwitchChatConnection } from "./twitchChat";
+import {
+  DOCK_ACTION_EVENT,
+  DOCK_STATE_EVENT,
+  type DockAction,
+  type DockProposal,
+} from "./dockProtocol";
 
 // Detection model defaults per the README: threshold 0.72 composite,
 // cooldown 45s, weights voice 0.85 / chat 0.70 / motion 0.55.
@@ -20,6 +28,7 @@ const COOLDOWN_MS = 45_000;
 const TICK_MS = 350; // ~3fps for motion sampling + chat rate recompute
 const CHAT_WINDOW_MS = 5_000;
 const HISTORY_MAX_POINTS = 1800; // ~30 min at ~1/sec
+const WAVE_MAX_POINTS = 32;
 
 const WEIGHTS = { voice: 0.85, chat: 0.7, motion: 0.55 };
 
@@ -36,6 +45,10 @@ interface DetectionState {
   history: ScorePoint[];
   marks: number[];
   chatConnected: boolean;
+  proposal: DockProposal | null;
+  keptCount: number;
+  skippedCount: number;
+  resolveProposal: (kept: boolean) => void;
 }
 
 const DetectionContext = createContext<DetectionState | null>(null);
@@ -44,9 +57,11 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   const obs = useObs();
   const capture = useCapture();
   const settings = useSettings();
-  const { status, micLevel, sceneChangedAt, captureScreenshot } = obs;
+  const clips = useClips();
+  const { status, micLevel, sceneChangedAt, captureScreenshot, replayBufferActive } = obs;
   const { autoCapture } = capture;
   const { twitchChannel } = settings;
+  const { clips: clipList, resolveClip } = clips;
 
   const [voiceScore, setVoiceScore] = useState(0);
   const [chatScore, setChatScore] = useState(0);
@@ -55,6 +70,7 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   const [history, setHistory] = useState<ScorePoint[]>([]);
   const [marks, setMarks] = useState<number[]>([]);
   const [chatConnected, setChatConnected] = useState(false);
+  const [proposal, setProposal] = useState<DockProposal | null>(null);
 
   const voiceNormRef = useRef<RollingNormalizer | null>(null);
   const chatNormRef = useRef<RollingNormalizer | null>(null);
@@ -62,9 +78,22 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   const motionDifferRef = useRef(new MotionDiffer());
   const lastTriggerRef = useRef(0);
   const voiceScoreRef = useRef(0);
+  const voiceWaveRef = useRef<number[]>([]);
+  const proposalRef = useRef<DockProposal | null>(null);
 
   const chatTimestampsRef = useRef<number[]>([]);
   const chatEmotesRef = useRef<number[]>([]);
+
+  const keptCount = clipList.filter((c) => c.kept === true).length;
+  const skippedCount = clipList.filter((c) => c.kept === false).length;
+
+  const resolveProposal = (kept: boolean) => {
+    const current = proposalRef.current;
+    if (!current) return;
+    proposalRef.current = null;
+    setProposal(null);
+    resolveClip(current.clipId, kept);
+  };
 
   // --- voice: recompute on every mic-level tick from OBS ---
   useEffect(() => {
@@ -73,6 +102,9 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
     const n = voiceNormRef.current.push(micLevel);
     voiceScoreRef.current = n;
     setVoiceScore(n);
+    voiceWaveRef.current = [...voiceWaveRef.current, n].slice(
+      -WAVE_MAX_POINTS,
+    );
   }, [micLevel]);
 
   useEffect(() => {
@@ -104,6 +136,19 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (sceneChangedAt > 0) motionDifferRef.current.reset();
   }, [sceneChangedAt]);
+
+  // --- listen for Keep/Skip actions coming from the floating dock window ---
+  useEffect(() => {
+    const unlisten = listen<DockAction>(DOCK_ACTION_EVENT, (event) => {
+      const current = proposalRef.current;
+      if (!current || current.clipId !== event.payload.clipId) return;
+      resolveProposal(event.payload.action === "keep");
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolveClip]);
 
   // --- motion sampling + chat rate + composite, on a shared tick ---
   useEffect(() => {
@@ -148,15 +193,46 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
           : next;
       });
 
-      if (comp >= THRESHOLD && now - lastTriggerRef.current > COOLDOWN_MS) {
+      if (
+        comp >= THRESHOLD &&
+        now - lastTriggerRef.current > COOLDOWN_MS &&
+        !proposalRef.current
+      ) {
         lastTriggerRef.current = now;
         setMarks((m) => [...m, now].slice(-50));
-        autoCapture("composite", `Moment detected (${comp.toFixed(2)})`);
+        const clipId = await autoCapture(
+          "composite",
+          `Moment detected (${comp.toFixed(2)})`,
+        );
+        if (clipId !== null) {
+          const next = { clipId, score: comp, at: now };
+          proposalRef.current = next;
+          setProposal(next);
+        }
       }
+
+      emit(DOCK_STATE_EVENT, {
+        obsStatus: status,
+        replayBufferActive,
+        voiceScore: voiceScoreRef.current,
+        chatScore: chatN,
+        motionScore: motionN,
+        voiceWave: voiceWaveRef.current,
+        proposal: proposalRef.current,
+        keptCount,
+        skippedCount,
+      });
     }, TICK_MS);
 
     return () => clearInterval(interval);
-  }, [status, captureScreenshot, autoCapture]);
+  }, [
+    status,
+    captureScreenshot,
+    autoCapture,
+    replayBufferActive,
+    keptCount,
+    skippedCount,
+  ]);
 
   return (
     <DetectionContext.Provider
@@ -168,6 +244,10 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
         history,
         marks,
         chatConnected,
+        proposal,
+        keptCount,
+        skippedCount,
+        resolveProposal,
       }}
     >
       {children}

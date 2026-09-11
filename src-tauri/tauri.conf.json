@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "JCForge",
         "width": 1400,
         "height": 880,
@@ -19,6 +20,18 @@
         "minHeight": 700,
         "decorations": false,
         "backgroundColor": "#101216"
+      },
+      {
+        "label": "dock",
+        "url": "index.html?window=dock",
+        "title": "JCForge dock",
+        "width": 304,
+        "height": 460,
+        "resizable": false,
+        "alwaysOnTop": true,
+        "decorations": false,
+        "backgroundColor": "#121418",
+        "visible": false
       }
     ],
     "security": {
