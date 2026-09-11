@@ -126,6 +126,23 @@
   border-color: var(--accent);
 }
 
+.title-bar__password-reveal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.title-bar__password-reveal:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
 .title-bar__password-submit {
   padding: 6px 10px;
   border-radius: var(--radius-sm);

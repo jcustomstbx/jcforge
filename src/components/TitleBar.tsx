@@ -1,5 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Square, X } from "lucide-react";
+import { Eye, EyeOff, Minus, Square, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useObs } from "../lib/obs";
 import "./TitleBar.css";
@@ -10,6 +10,7 @@ export function TitleBar() {
   const obs = useObs();
   const [showPasswordField, setShowPasswordField] = useState(false);
   const [password, setPassword] = useState("");
+  const [revealPassword, setRevealPassword] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const bufferText =
@@ -31,7 +32,8 @@ export function TitleBar() {
   const canRetry = obs.status === "disconnected" || obs.status === "error";
 
   const submitPassword = () => {
-    obs.connect(undefined, password || undefined);
+    const trimmed = password.trim();
+    obs.connect(undefined, trimmed || undefined);
     setShowPasswordField(false);
   };
 
@@ -85,7 +87,7 @@ export function TitleBar() {
             <div className="title-bar__password-row">
               <input
                 ref={inputRef}
-                type="password"
+                type={revealPassword ? "text" : "password"}
                 className="title-bar__password-input"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -96,6 +98,14 @@ export function TitleBar() {
                 placeholder="leave blank if none"
                 autoFocus
               />
+              <button
+                type="button"
+                className="title-bar__password-reveal"
+                aria-label={revealPassword ? "Hide password" : "Show password"}
+                onClick={() => setRevealPassword((v) => !v)}
+              >
+                {revealPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
               <button
                 className="title-bar__password-submit"
                 onClick={submitPassword}
