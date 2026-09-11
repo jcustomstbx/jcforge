@@ -18,8 +18,8 @@
 .title-bar__logo {
   width: 16px;
   height: 16px;
-  border-radius: 4px;
-  background: linear-gradient(140deg, var(--accent), var(--accent-deep));
+  object-fit: contain;
+  display: block;
 }
 
 .title-bar__name {

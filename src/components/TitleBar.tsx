@@ -2,6 +2,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Eye, EyeOff, Minus, Square, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useObs } from "../lib/obs";
+import logo from "../assets/logo.png";
 import "./TitleBar.css";
 
 const appWindow = getCurrentWindow();
@@ -40,7 +41,7 @@ export function TitleBar() {
   return (
     <div className="title-bar" data-tauri-drag-region>
       <div className="title-bar__brand">
-        <div className="title-bar__logo" />
+        <img className="title-bar__logo" src={logo} alt="" />
         <span className="title-bar__name">JCForge</span>
       </div>
       <span className="title-bar__meta">{metaText}</span>

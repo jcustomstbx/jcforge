@@ -80,8 +80,14 @@ export function ObsProvider({ children }: { children: ReactNode }) {
         const version = await obs.call("GetVersion");
         setObsVersion(version.obsVersion);
         setWebsocketVersion(version.obsWebSocketVersion);
-        const replayStatus = await obs.call("GetReplayBufferStatus");
-        setReplayBufferActive(replayStatus.outputActive);
+        try {
+          const replayStatus = await obs.call("GetReplayBufferStatus");
+          setReplayBufferActive(replayStatus.outputActive);
+        } catch {
+          // Replay buffer output doesn't exist until it's been started at
+          // least once in OBS - that's not a connection failure.
+          setReplayBufferActive(false);
+        }
       })
       .catch((err: unknown) => {
         setStatus("error");
