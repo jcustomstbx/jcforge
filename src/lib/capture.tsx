@@ -11,6 +11,7 @@ import {
 } from "react";
 import { useClips } from "./clips";
 import { useObs } from "./obs";
+import { probeDuration } from "./ffmpeg";
 import "./capture.css";
 
 type ToastKind = "success" | "error";
@@ -74,11 +75,15 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
           pushToast("error", "Couldn't save a clip — check OBS");
           return null;
         }
-        const fileSizeBytes = await getFileSize(path);
+        const [fileSizeBytes, durationSeconds] = await Promise.all([
+          getFileSize(path),
+          probeDuration(path),
+        ]);
         const id = await addClip({
           path,
           capturedAt: new Date().toISOString(),
           fileSizeBytes,
+          durationSeconds,
           triggerReason: reason,
         });
         const filename = path.split(/[\\/]/).pop() ?? path;

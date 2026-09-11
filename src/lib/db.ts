@@ -33,14 +33,21 @@ export interface NewClip {
   path: string;
   capturedAt: string;
   fileSizeBytes: number | null;
+  durationSeconds?: number | null;
   triggerReason: string;
 }
 
 export async function insertClip(input: NewClip): Promise<number> {
   const db = await getDb();
   const result = await db.execute(
-    "INSERT INTO clips (path, captured_at, file_size_bytes, trigger_reason) VALUES ($1, $2, $3, $4)",
-    [input.path, input.capturedAt, input.fileSizeBytes, input.triggerReason],
+    "INSERT INTO clips (path, captured_at, file_size_bytes, duration_seconds, trigger_reason) VALUES ($1, $2, $3, $4, $5)",
+    [
+      input.path,
+      input.capturedAt,
+      input.fileSizeBytes,
+      input.durationSeconds ?? null,
+      input.triggerReason,
+    ],
   );
   return result.lastInsertId ?? 0;
 }

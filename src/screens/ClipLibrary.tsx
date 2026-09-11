@@ -25,6 +25,14 @@ function filename(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+function formatDuration(seconds: number | null): string {
+  if (seconds === null) return "—";
+  const total = Math.round(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
 function ClipCard({ clip }: { clip: Clip }) {
   const nav = useNavigation();
   const clips = useClips();
@@ -44,7 +52,7 @@ function ClipCard({ clip }: { clip: Clip }) {
     <div className="clip-card">
       <div className="clip-card__thumb">
         <span className="clip-card__duration">
-          {clip.durationSeconds !== null ? `${clip.durationSeconds}s` : "—"}
+          {formatDuration(clip.durationSeconds)}
         </span>
       </div>
       <div className="clip-card__body">
@@ -55,7 +63,7 @@ function ClipCard({ clip }: { clip: Clip }) {
         <div className="clip-card__actions">
           <button
             className="clip-card__open-editor"
-            onClick={() => nav.navigate("editor")}
+            onClick={() => nav.openEditor(clip.id)}
           >
             Open editor
           </button>
