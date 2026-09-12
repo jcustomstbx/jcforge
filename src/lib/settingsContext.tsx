@@ -12,19 +12,57 @@ const TWITCH_CHANNEL_KEY = "twitch_channel";
 const RECORDING_BACKEND_KEY = "recording_backend";
 const STREAMLABS_TOKEN_KEY = "streamlabs_token";
 const STREAMLABS_REPLAY_FOLDER_KEY = "streamlabs_replay_folder";
+const DETECTION_THRESHOLD_KEY = "detection_threshold";
+const DETECTION_COOLDOWN_MS_KEY = "detection_cooldown_ms";
+const DETECTION_WEIGHTS_KEY = "detection_weights";
 
 export type RecordingBackendId = "obs" | "streamlabs";
+
+export interface DetectionWeights {
+  voice: number;
+  chat: number;
+  motion: number;
+}
+
+// Defaults from the design doc's detection model.
+export const DEFAULT_DETECTION_THRESHOLD = 0.72;
+export const DEFAULT_DETECTION_COOLDOWN_MS = 45_000;
+export const DEFAULT_DETECTION_WEIGHTS: DetectionWeights = {
+  voice: 0.85,
+  chat: 0.7,
+  motion: 0.55,
+};
+
+function parseWeights(raw: string | null): DetectionWeights {
+  if (!raw) return DEFAULT_DETECTION_WEIGHTS;
+  try {
+    const parsed = JSON.parse(raw);
+    return {
+      voice: typeof parsed.voice === "number" ? parsed.voice : DEFAULT_DETECTION_WEIGHTS.voice,
+      chat: typeof parsed.chat === "number" ? parsed.chat : DEFAULT_DETECTION_WEIGHTS.chat,
+      motion: typeof parsed.motion === "number" ? parsed.motion : DEFAULT_DETECTION_WEIGHTS.motion,
+    };
+  } catch {
+    return DEFAULT_DETECTION_WEIGHTS;
+  }
+}
 
 interface SettingsState {
   twitchChannel: string | null;
   recordingBackend: RecordingBackendId;
   streamlabsToken: string | null;
   streamlabsReplayFolder: string | null;
+  detectionThreshold: number;
+  detectionCooldownMs: number;
+  detectionWeights: DetectionWeights;
   loading: boolean;
   setTwitchChannel: (channel: string) => Promise<void>;
   setRecordingBackend: (backend: RecordingBackendId) => Promise<void>;
   setStreamlabsToken: (token: string) => Promise<void>;
   setStreamlabsReplayFolder: (folder: string) => Promise<void>;
+  setDetectionThreshold: (threshold: number) => Promise<void>;
+  setDetectionCooldownMs: (cooldownMs: number) => Promise<void>;
+  setDetectionWeights: (weights: DetectionWeights) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -41,6 +79,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [streamlabsReplayFolder, setStreamlabsReplayFolderState] = useState<
     string | null
   >(null);
+  const [detectionThreshold, setDetectionThresholdState] = useState(
+    DEFAULT_DETECTION_THRESHOLD,
+  );
+  const [detectionCooldownMs, setDetectionCooldownMsState] = useState(
+    DEFAULT_DETECTION_COOLDOWN_MS,
+  );
+  const [detectionWeights, setDetectionWeightsState] = useState<DetectionWeights>(
+    DEFAULT_DETECTION_WEIGHTS,
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -49,14 +96,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       getSetting(RECORDING_BACKEND_KEY),
       getSetting(STREAMLABS_TOKEN_KEY),
       getSetting(STREAMLABS_REPLAY_FOLDER_KEY),
+      getSetting(DETECTION_THRESHOLD_KEY),
+      getSetting(DETECTION_COOLDOWN_MS_KEY),
+      getSetting(DETECTION_WEIGHTS_KEY),
     ])
-      .then(([channel, backend, token, folder]) => {
+      .then(([channel, backend, token, folder, threshold, cooldown, weights]) => {
         setTwitchChannelState(channel);
         if (backend === "obs" || backend === "streamlabs") {
           setRecordingBackendState(backend);
         }
         setStreamlabsTokenState(token);
         setStreamlabsReplayFolderState(folder);
+        if (threshold) setDetectionThresholdState(Number(threshold));
+        if (cooldown) setDetectionCooldownMsState(Number(cooldown));
+        setDetectionWeightsState(parseWeights(weights));
       })
       .finally(() => setLoading(false));
   }, []);
@@ -87,6 +140,21 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setStreamlabsReplayFolderState(trimmed);
   }, []);
 
+  const setDetectionThreshold = useCallback(async (threshold: number) => {
+    await setSetting(DETECTION_THRESHOLD_KEY, String(threshold));
+    setDetectionThresholdState(threshold);
+  }, []);
+
+  const setDetectionCooldownMs = useCallback(async (cooldownMs: number) => {
+    await setSetting(DETECTION_COOLDOWN_MS_KEY, String(cooldownMs));
+    setDetectionCooldownMsState(cooldownMs);
+  }, []);
+
+  const setDetectionWeights = useCallback(async (weights: DetectionWeights) => {
+    await setSetting(DETECTION_WEIGHTS_KEY, JSON.stringify(weights));
+    setDetectionWeightsState(weights);
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -94,11 +162,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         recordingBackend,
         streamlabsToken,
         streamlabsReplayFolder,
+        detectionThreshold,
+        detectionCooldownMs,
+        detectionWeights,
         loading,
         setTwitchChannel,
         setRecordingBackend,
         setStreamlabsToken,
         setStreamlabsReplayFolder,
+        setDetectionThreshold,
+        setDetectionCooldownMs,
+        setDetectionWeights,
       }}
     >
       {children}

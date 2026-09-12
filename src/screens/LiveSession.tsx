@@ -1,40 +1,11 @@
-import type { ReactNode } from "react";
 import { useCapture } from "../lib/capture";
 import { useObs } from "../lib/obs";
 import { useBackend } from "../lib/backend";
 import { useSettings } from "../lib/settingsContext";
 import { useDetection } from "../lib/detection";
 import { ExcitementTimeline } from "../components/ExcitementTimeline";
+import { SignalMeter } from "../components/SignalMeter";
 import "./LiveSession.css";
-
-function Meter({
-  label,
-  value,
-  caption,
-}: {
-  label: string;
-  value: number;
-  caption?: ReactNode;
-}) {
-  return (
-    <div className="signal-meter">
-      <div className="signal-meter__row">
-        <span className="signal-meter__label">{label}</span>
-        <span className="signal-meter__value">{value.toFixed(2)}</span>
-      </div>
-      <div className="signal-meter__track">
-        <div
-          className={
-            "signal-meter__fill" +
-            (value > 0.8 ? " signal-meter__fill--alert" : "")
-          }
-          style={{ width: `${Math.round(Math.min(1, value) * 100)}%` }}
-        />
-      </div>
-      {caption && <div className="signal-meter__caption">{caption}</div>}
-    </div>
-  );
-}
 
 // OBS reports which mic input it's tracking - split out so it only mounts
 // (and only calls useObs()) while OBS is the active backend.
@@ -74,7 +45,7 @@ export function LiveSession() {
       </div>
 
       <div className="live-session__signals">
-        <Meter
+        <SignalMeter
           label="Raised voice"
           value={detection.voiceScore}
           caption={
@@ -87,7 +58,7 @@ export function LiveSession() {
             )
           }
         />
-        <Meter
+        <SignalMeter
           label="Chat spike"
           value={detection.chatScore}
           caption={
@@ -96,7 +67,7 @@ export function LiveSession() {
               : "set a Twitch channel on Sources to enable"
           }
         />
-        <Meter
+        <SignalMeter
           label="Screen motion"
           value={detection.motionScore}
           caption={
@@ -112,6 +83,7 @@ export function LiveSession() {
       <ExcitementTimeline
         history={detection.history}
         marks={detection.marks}
+        threshold={settings.detectionThreshold}
       />
     </div>
   );

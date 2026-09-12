@@ -15,6 +15,7 @@ import { useSettings } from "./settingsContext";
 import { RollingNormalizer } from "./signal";
 import { MotionDiffer } from "./motion";
 import { TwitchChatConnection } from "./twitchChat";
+import { createSession, endSession, insertSignalSample } from "./db";
 import {
   DOCK_ACTION_EVENT,
   DOCK_STATE_EVENT,
@@ -22,16 +23,10 @@ import {
   type DockProposal,
 } from "./dockProtocol";
 
-// Detection model defaults per the README: threshold 0.72 composite,
-// cooldown 45s, weights voice 0.85 / chat 0.70 / motion 0.55.
-const THRESHOLD = 0.72;
-const COOLDOWN_MS = 45_000;
 const TICK_MS = 350; // ~3fps for motion sampling + chat rate recompute
 const CHAT_WINDOW_MS = 5_000;
 const HISTORY_MAX_POINTS = 1800; // ~30 min at ~1/sec
 const WAVE_MAX_POINTS = 32;
-
-const WEIGHTS = { voice: 0.85, chat: 0.7, motion: 0.55 };
 
 export interface ScorePoint {
   t: number;
@@ -68,7 +63,8 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   } = backend;
   const micLevel = useMicLevel();
   const { autoCapture } = capture;
-  const { twitchChannel } = settings;
+  const { twitchChannel, detectionThreshold, detectionCooldownMs, detectionWeights } =
+    settings;
   const { clips: clipList, resolveClip } = clips;
 
   const [voiceScore, setVoiceScore] = useState(0);
@@ -88,6 +84,7 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   const voiceScoreRef = useRef(0);
   const voiceWaveRef = useRef<number[]>([]);
   const proposalRef = useRef<DockProposal | null>(null);
+  const sessionIdRef = useRef<number | null>(null);
 
   const chatTimestampsRef = useRef<number[]>([]);
   const chatEmotesRef = useRef<number[]>([]);
@@ -158,6 +155,32 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolveClip]);
 
+  // --- record a session row for the duration this backend is connected, so
+  // the raw signal history can be backtested later against different
+  // weights/threshold - keyed only on `status` so it isn't torn down and
+  // restarted by the tick effect below re-running for unrelated reasons
+  // (e.g. a slider moving mid-stream). ---
+  useEffect(() => {
+    if (status !== "connected") return;
+    let active = true;
+    createSession(new Date().toISOString())
+      .then((id) => {
+        if (active) sessionIdRef.current = id;
+      })
+      .catch((err) => console.error("[detection] failed to start session:", err));
+
+    return () => {
+      active = false;
+      const id = sessionIdRef.current;
+      sessionIdRef.current = null;
+      if (id !== null) {
+        endSession(id, new Date().toISOString()).catch((err) =>
+          console.error("[detection] failed to end session:", err),
+        );
+      }
+    };
+  }, [status]);
+
   // --- motion sampling + chat rate + composite, on a shared tick ---
   useEffect(() => {
     if (status !== "connected") return;
@@ -192,9 +215,9 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
       setChatScore(chatN);
 
       const comp =
-        voiceScoreRef.current * WEIGHTS.voice +
-        chatN * WEIGHTS.chat +
-        motionN * WEIGHTS.motion;
+        voiceScoreRef.current * detectionWeights.voice +
+        chatN * detectionWeights.chat +
+        motionN * detectionWeights.motion;
       setComposite(comp);
       setHistory((h) => {
         const next = [...h, { t: now, value: comp }];
@@ -203,9 +226,20 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
           : next;
       });
 
+      if (sessionIdRef.current !== null) {
+        insertSignalSample(sessionIdRef.current, {
+          tMs: now,
+          voice: voiceScoreRef.current,
+          chat: chatN,
+          motion: motionN,
+        }).catch((err) =>
+          console.error("[detection] failed to log signal sample:", err),
+        );
+      }
+
       if (
-        comp >= THRESHOLD &&
-        now - lastTriggerRef.current > COOLDOWN_MS &&
+        comp >= detectionThreshold &&
+        now - lastTriggerRef.current > detectionCooldownMs &&
         !proposalRef.current
       ) {
         lastTriggerRef.current = now;
@@ -243,6 +277,9 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
     keptCount,
     skippedCount,
     supportsMotion,
+    detectionThreshold,
+    detectionCooldownMs,
+    detectionWeights,
   ]);
 
   return (

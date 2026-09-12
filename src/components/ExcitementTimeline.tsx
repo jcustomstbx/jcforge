@@ -1,30 +1,44 @@
 import type { ScorePoint } from "../lib/detection";
+import { DEFAULT_DETECTION_THRESHOLD } from "../lib/settingsContext";
 import "./ExcitementTimeline.css";
 
 const WINDOW_MS = 30 * 60 * 1000;
-const THRESHOLD = 0.72;
 
 interface ExcitementTimelineProps {
   history: ScorePoint[];
   marks: number[];
+  threshold?: number;
+  /** Explicit time range for the x-axis, e.g. a past session's span -
+   * defaults to "the last 30 minutes up to now" for the live view. */
+  rangeStart?: number;
+  rangeEnd?: number;
+  /** Label shown where the live view says "last 30 min". */
+  rangeLabel?: string;
 }
 
 export function ExcitementTimeline({
   history,
   marks,
+  threshold = DEFAULT_DETECTION_THRESHOLD,
+  rangeStart,
+  rangeEnd,
+  rangeLabel = "last 30 min",
 }: ExcitementTimelineProps) {
-  const now = Date.now();
-  const windowStart = now - WINDOW_MS;
-  const visible = history.filter((p) => p.t >= windowStart);
+  const windowEnd = rangeEnd ?? Date.now();
+  const windowStart = rangeStart ?? windowEnd - WINDOW_MS;
+  const span = Math.max(1, windowEnd - windowStart);
+  const visible = history.filter(
+    (p) => p.t >= windowStart && p.t <= windowEnd,
+  );
 
-  const toX = (t: number) => ((t - windowStart) / WINDOW_MS) * 100;
+  const toX = (t: number) => ((t - windowStart) / span) * 100;
   const toY = (v: number) => (1 - Math.min(1, Math.max(0, v))) * 100;
 
   const points = visible.map((p) => `${toX(p.t)},${toY(p.value)}`).join(" ");
   const areaPoints =
     visible.length > 0 ? `0,100 ${points} ${toX(visible[visible.length - 1]!.t)},100` : "";
 
-  const visibleMarks = marks.filter((m) => m >= windowStart);
+  const visibleMarks = marks.filter((m) => m >= windowStart && m <= windowEnd);
 
   return (
     <div className="excitement-timeline">
@@ -34,13 +48,13 @@ export function ExcitementTimeline({
         </span>
         <div className="excitement-timeline__spacer" />
         <span className="excitement-timeline__meta">
-          last 30 min · threshold {THRESHOLD.toFixed(2)}
+          {rangeLabel} · threshold {threshold.toFixed(2)}
         </span>
       </div>
       <div className="excitement-timeline__well">
         <div
           className="excitement-timeline__threshold-line"
-          style={{ top: `${(1 - THRESHOLD) * 100}%` }}
+          style={{ top: `${(1 - threshold) * 100}%` }}
         />
         {visibleMarks.map((m) => (
           <div

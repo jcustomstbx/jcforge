@@ -107,6 +107,26 @@ pub fn run() {
             sql: "ALTER TABLE clips ADD COLUMN kept INTEGER;",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 4,
+            description: "create sessions and signal_samples tables for backtesting",
+            sql: "CREATE TABLE sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at TEXT NOT NULL,
+                ended_at TEXT
+            );
+            CREATE TABLE signal_samples (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                t_ms INTEGER NOT NULL,
+                voice REAL NOT NULL,
+                chat REAL NOT NULL,
+                motion REAL NOT NULL,
+                FOREIGN KEY(session_id) REFERENCES sessions(id)
+            );
+            CREATE INDEX idx_signal_samples_session ON signal_samples(session_id);",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
