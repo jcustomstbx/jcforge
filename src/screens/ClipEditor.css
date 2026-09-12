@@ -58,6 +58,10 @@
   margin: 0 auto;
   border-radius: var(--radius-panel);
   overflow: hidden;
+  /* Lets the caption overlay size its font in cqh, scaled against this
+     box's actual height - so "20px" always means the same fraction of
+     frame height here as it does in the real 1920px-tall output. */
+  container-type: size;
 }
 
 .clip-editor__zoom-layer {
@@ -84,15 +88,14 @@
 }
 
 .clip-editor__caption-overlay {
+  /* left/width/bottom/font-size are set inline, from the actual crop
+     region and the caption size/position sliders - so the preview always
+     matches where the render will actually put them, not a fixed guess. */
   position: absolute;
-  left: 50%;
-  bottom: 15%;
   transform: translateX(-50%);
-  max-width: 85%;
   padding: 4px 10px;
   color: #fff;
   font-weight: 700;
-  font-size: 15px;
   text-align: center;
   text-shadow:
     -1px -1px 0 #000,

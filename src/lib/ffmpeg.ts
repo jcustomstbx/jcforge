@@ -41,6 +41,11 @@ export interface RenderOptions {
   /** Horizontal crop position, -1 (left edge) to 1 (right edge), 0 =
    * centered. Fixed for the whole render - see buildCropFilter. */
   framingPan?: number;
+  /** Caption font size, in pixels of the final 1080x1920 output. */
+  captionFontSize?: number;
+  /** Caption baseline distance from the bottom edge, in pixels of the
+   * final 1080x1920 output - ASS's MarginV. Higher = higher up the frame. */
+  captionMarginV?: number;
 }
 
 export interface RenderResult {
@@ -83,8 +88,19 @@ function escapeForSubtitlesFilter(path: string): string {
   return path.replace(/\\/g, "/").replace(/:/g, "\\:");
 }
 
-const CAPTION_STYLE =
-  "FontName=Arial,FontSize=20,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=90";
+export const DEFAULT_CAPTION_FONT_SIZE = 20;
+export const DEFAULT_CAPTION_MARGIN_V = 90;
+
+// A plain .srt carries no resolution info, so libass falls back to its own
+// default reference resolution (384x288) for interpreting FontSize/MarginV,
+// then scales that up to the real frame size - meaning those values are
+// NOT literal output pixels unless PlayResX/PlayResY are pinned explicitly.
+// Without this, a MarginV past ~250-300 gets scaled by ~6.7x (1920/288)
+// and pushed the caption entirely off the top of the frame - confirmed by
+// rendering the same clip with and without these two options.
+function buildCaptionStyle(fontSize: number, marginV: number): string {
+  return `PlayResX=1080,PlayResY=1920,FontName=Arial,FontSize=${fontSize},Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Alignment=2,MarginV=${marginV}`;
+}
 
 export async function renderVertical(
   opts: RenderOptions,
@@ -95,8 +111,12 @@ export async function renderVertical(
   const zoomFilter = buildZoomPunchFilter(opts.zoomSeconds ?? [], opts.zoomDurationSec);
   if (zoomFilter) stages.push(zoomFilter);
   if (opts.captionsSrtPath) {
+    const style = buildCaptionStyle(
+      opts.captionFontSize ?? DEFAULT_CAPTION_FONT_SIZE,
+      opts.captionMarginV ?? DEFAULT_CAPTION_MARGIN_V,
+    );
     stages.push(
-      `subtitles='${escapeForSubtitlesFilter(opts.captionsSrtPath)}':force_style='${CAPTION_STYLE}'`,
+      `subtitles='${escapeForSubtitlesFilter(opts.captionsSrtPath)}':force_style='${style}'`,
     );
   }
   const flashFilter = buildFlashFilter(opts.flashSeconds ?? [], opts.flashDurationSec);

@@ -4,7 +4,12 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useClips } from "../lib/clips";
 import { useNavigation } from "../lib/navigation";
-import { renderVertical, summarizeFfmpegError } from "../lib/ffmpeg";
+import {
+  renderVertical,
+  summarizeFfmpegError,
+  DEFAULT_CAPTION_FONT_SIZE,
+  DEFAULT_CAPTION_MARGIN_V,
+} from "../lib/ffmpeg";
 import {
   adjustCaptionsForTrim,
   linesToSrt,
@@ -182,6 +187,8 @@ export function ClipEditor() {
   const [addImpactWarning, setAddImpactWarning] = useState<string | null>(null);
   const [flashDurationSec, setFlashDurationSec] = useState(DEFAULT_FLASH_DURATION_SEC);
   const [zoomDurationSec, setZoomDurationSec] = useState(DEFAULT_ZOOM_DURATION_SEC);
+  const [captionFontSize, setCaptionFontSize] = useState(DEFAULT_CAPTION_FONT_SIZE);
+  const [captionMarginV, setCaptionMarginV] = useState(DEFAULT_CAPTION_MARGIN_V);
   const [framingPan, setFramingPan] = useState(0);
   const [nativeSize, setNativeSize] = useState<{ w: number; h: number } | null>(
     null,
@@ -199,6 +206,8 @@ export function ClipEditor() {
     setAddImpactWarning(null);
     setFlashDurationSec(DEFAULT_FLASH_DURATION_SEC);
     setZoomDurationSec(DEFAULT_ZOOM_DURATION_SEC);
+    setCaptionFontSize(DEFAULT_CAPTION_FONT_SIZE);
+    setCaptionMarginV(DEFAULT_CAPTION_MARGIN_V);
     setFramingPan(0);
     setNativeSize(null);
     if (zoomLayerRef.current) zoomLayerRef.current.style.transform = "scale(1)";
@@ -476,6 +485,8 @@ export function ClipEditor() {
       zoomSeconds: zoomSeconds.length > 0 ? zoomSeconds : undefined,
       flashDurationSec,
       zoomDurationSec,
+      captionFontSize,
+      captionMarginV,
       framingPan,
     });
     if (result.ok) {
@@ -490,6 +501,18 @@ export function ClipEditor() {
     Math.abs(framingPan) < 0.03
       ? "Centered"
       : `${Math.round(Math.abs(framingPan) * 100)}% ${framingPan < 0 ? "left" : "right"}`;
+
+  // Where the actual 9:16 crop sits within the full preview frame - the
+  // caption overlay needs this so it previews inside the region that will
+  // actually survive the crop, not the full uncropped frame (which made
+  // captions look like they'd fall outside frame even when the real
+  // render already centers them correctly post-crop).
+  const cropWidthFrac = nativeSize
+    ? Math.min(1, (nativeSize.h * 9) / 16 / nativeSize.w)
+    : 1;
+  const cropMaxOffsetFrac = 1 - cropWidthFrac;
+  const cropLeftFrac =
+    cropMaxOffsetFrac > 0.001 ? (cropMaxOffsetFrac / 2) * (1 + framingPan) : 0;
 
   const trimMarkers: TrimBarMarker[] = allImpacts.map((p) => ({
     time: p.time,
@@ -534,7 +557,16 @@ export function ClipEditor() {
               ref={flashOverlayRef}
               style={{ opacity: 0 }}
             />
-            <div className="clip-editor__caption-overlay" ref={captionOverlayRef} />
+            <div
+              className="clip-editor__caption-overlay"
+              ref={captionOverlayRef}
+              style={{
+                left: `${(cropLeftFrac + cropWidthFrac / 2) * 100}%`,
+                width: `${cropWidthFrac * 92}%`,
+                bottom: `${(captionMarginV / 1920) * 100}%`,
+                fontSize: `${captionFontSize / 19.2}cqh`,
+              }}
+            />
             {openStep === 1 && (
               <FramingPreview
                 nativeSize={nativeSize}
@@ -658,6 +690,26 @@ export function ClipEditor() {
                   >
                     + Add at {formatTime(currentTime)}
                   </button>
+                </div>
+                <div className="clip-editor__duration-sliders">
+                  <TuningSlider
+                    label="Caption size"
+                    value={captionFontSize}
+                    min={12}
+                    max={48}
+                    step={1}
+                    format={(v) => `${v.toFixed(0)}px`}
+                    onCommit={setCaptionFontSize}
+                  />
+                  <TuningSlider
+                    label="Caption position"
+                    value={captionMarginV}
+                    min={20}
+                    max={500}
+                    step={10}
+                    format={(v) => `${v.toFixed(0)}px from bottom`}
+                    onCommit={setCaptionMarginV}
+                  />
                 </div>
                 {transcribe.status === "error" && (
                   <p className="clip-editor__note clip-editor__note--error">
