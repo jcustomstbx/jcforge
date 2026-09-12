@@ -15,6 +15,7 @@ import {
 import { detectImpactMoments } from "../lib/impactDetection";
 import { formatTime } from "../lib/format";
 import { TrimBar } from "../components/TrimBar";
+import { FramingPreview } from "../components/FramingPreview";
 import "./ClipEditor.css";
 
 function filename(path: string): string {
@@ -33,6 +34,11 @@ function deriveOutputPath(sourcePath: string): string {
   const sep = sourcePath.includes("\\") ? "\\" : "/";
   return `${dir}${sep}${stem}_vertical.mp4`;
 }
+
+// Manual and auto-detected effect points close enough together would just
+// double up the same flash/zoom - collapse anything within this window.
+const IMPACT_DEDUPE_SEC = 0.3;
+const NEW_CAPTION_DURATION_SEC = 2.5;
 
 type RenderState =
   | { status: "idle" }
@@ -73,6 +79,16 @@ export function ClipEditor() {
     status: "idle",
   });
   const [applyEffects, setApplyEffects] = useState(true);
+  // Manual effect points, in absolute source-clip time (same axis as
+  // currentTime/caption lines) - unlike auto-detected impacts, which are
+  // relative to the trim window, these don't need invalidating when the
+  // trim changes, just filtering to whatever's still inside it at render
+  // time.
+  const [manualImpacts, setManualImpacts] = useState<number[]>([]);
+  const [framingPan, setFramingPan] = useState(0);
+  const [nativeSize, setNativeSize] = useState<{ w: number; h: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     setStartSec(0);
@@ -82,6 +98,9 @@ export function ClipEditor() {
     setCaptionLines(null);
     setTranscribe({ status: "idle" });
     setImpactState({ status: "idle" });
+    setManualImpacts([]);
+    setFramingPan(0);
+    setNativeSize(null);
   }, [clip?.id]);
 
   // Detected impacts are relative to the current trim window - invalidate
@@ -105,6 +124,23 @@ export function ClipEditor() {
     video.addEventListener("timeupdate", onTimeUpdate);
     return () => video.removeEventListener("timeupdate", onTimeUpdate);
   }, [startSec, endSec]);
+
+  // Track the source's native pixel size so the framing preview's overlay
+  // can be sized to exactly match the displayed video frame (see the
+  // video-wrap's aspect-ratio below) - without that, the crop-box drag math
+  // would be off any time the preview area doesn't match the video's ratio.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onMeta = () => {
+      if (video.videoWidth && video.videoHeight) {
+        setNativeSize({ w: video.videoWidth, h: video.videoHeight });
+      }
+    };
+    video.addEventListener("loadedmetadata", onMeta);
+    if (video.readyState >= 1) onMeta();
+    return () => video.removeEventListener("loadedmetadata", onMeta);
+  }, [clip?.id]);
 
   const videoSrc = useMemo(
     () => (clip ? convertFileSrc(clip.path) : null),
@@ -157,10 +193,57 @@ export function ClipEditor() {
     }
   };
 
+  const autoImpactsAbsolute =
+    impactState.status === "done"
+      ? impactState.impacts.map((t) => t + startSec)
+      : [];
+
+  const addManualImpactAtPlayhead = () => {
+    const t = currentTime;
+    const tooClose = [...manualImpacts, ...autoImpactsAbsolute].some(
+      (existing) => Math.abs(existing - t) < IMPACT_DEDUPE_SEC,
+    );
+    if (tooClose) return;
+    setManualImpacts((m) => [...m, t].sort((a, b) => a - b));
+  };
+
+  const removeManualImpact = (t: number) => {
+    setManualImpacts((m) => m.filter((x) => x !== t));
+  };
+
   const updateCaptionText = (id: number, text: string) => {
     setCaptionLines((lines) =>
       lines ? lines.map((l) => (l.id === id ? { ...l, text } : l)) : lines,
     );
+  };
+
+  const updateCaptionTiming = (
+    id: number,
+    field: "start" | "end",
+    value: number,
+  ) => {
+    setCaptionLines((lines) =>
+      lines
+        ? lines
+            .map((l) => (l.id === id ? { ...l, [field]: value } : l))
+            .sort((a, b) => a.start - b.start)
+        : lines,
+    );
+  };
+
+  const removeCaptionLine = (id: number) => {
+    setCaptionLines((lines) => (lines ? lines.filter((l) => l.id !== id) : lines));
+  };
+
+  const addCaptionAtPlayhead = () => {
+    const duration = clip.durationSeconds ?? currentTime + NEW_CAPTION_DURATION_SEC;
+    const start = currentTime;
+    const end = Math.min(duration, start + NEW_CAPTION_DURATION_SEC);
+    setCaptionLines((lines) => {
+      const nextId = (lines ?? []).reduce((max, l) => Math.max(max, l.id), 0) + 1;
+      const next = [...(lines ?? []), { id: nextId, start, end, text: "" }];
+      return next.sort((a, b) => a.start - b.start);
+    });
   };
 
   const doRender = async () => {
@@ -177,10 +260,15 @@ export function ClipEditor() {
       }
     }
 
-    const impactSeconds =
-      applyEffects && impactState.status === "done"
-        ? impactState.impacts
-        : undefined;
+    const autoRelative =
+      applyEffects && impactState.status === "done" ? impactState.impacts : [];
+    const manualRelative = manualImpacts
+      .filter((t) => t >= startSec && t <= endSec)
+      .map((t) => t - startSec);
+    const merged = [...autoRelative, ...manualRelative].sort((a, b) => a - b);
+    const deduped = merged.filter(
+      (t, i) => i === 0 || t - merged[i - 1] >= IMPACT_DEDUPE_SEC,
+    );
 
     const result = await renderVertical({
       sourcePath: clip.path,
@@ -188,7 +276,8 @@ export function ClipEditor() {
       startSeconds: startSec,
       endSeconds: endSec,
       captionsSrtPath,
-      impactSeconds,
+      impactSeconds: deduped.length > 0 ? deduped : undefined,
+      framingPan,
     });
     if (result.ok) {
       setRender({ status: "done", outputPath });
@@ -197,6 +286,16 @@ export function ClipEditor() {
       setRender({ status: "error", message: summarizeFfmpegError(result.log) });
     }
   };
+
+  const panLabel =
+    Math.abs(framingPan) < 0.03
+      ? "Centered"
+      : `${Math.round(Math.abs(framingPan) * 100)}% ${framingPan < 0 ? "left" : "right"}`;
+
+  const effectiveEffectCount = new Set([
+    ...(applyEffects && impactState.status === "done" ? impactState.impacts : []),
+    ...manualImpacts.filter((t) => t >= startSec && t <= endSec),
+  ]).size;
 
   return (
     <div className="clip-editor">
@@ -212,14 +311,30 @@ export function ClipEditor() {
 
       <div className="clip-editor__body">
         <div className="clip-editor__preview-col">
-          {videoSrc && (
-            <video
-              ref={videoRef}
-              className="clip-editor__video"
-              src={videoSrc}
-              controls
-            />
-          )}
+          <div
+            className="clip-editor__video-wrap"
+            style={
+              nativeSize
+                ? { aspectRatio: `${nativeSize.w} / ${nativeSize.h}` }
+                : undefined
+            }
+          >
+            {videoSrc && (
+              <video
+                ref={videoRef}
+                className="clip-editor__video"
+                src={videoSrc}
+                controls
+              />
+            )}
+            {openStep === 1 && (
+              <FramingPreview
+                nativeSize={nativeSize}
+                pan={framingPan}
+                onPanChange={setFramingPan}
+              />
+            )}
+          </div>
           <div className="clip-editor__trim">
             <TrimBar
               duration={clip.durationSeconds ?? 0}
@@ -255,29 +370,36 @@ export function ClipEditor() {
               <div>
                 <div className="clip-editor__step-title">Framing</div>
                 <div className="clip-editor__step-summary">
-                  Static-center 9:16 crop
+                  9:16 crop · {panLabel}
                 </div>
               </div>
               <div className="clip-editor__spacer" />
-              <span className="clip-editor__step-tag">auto</span>
+              <span className="clip-editor__step-tag">manual</span>
             </div>
             {openStep === 1 && (
               <div className="clip-editor__step-body">
                 <div className="clip-editor__row">
-                  <span>Mode</span>
-                  <span className="clip-editor__row-value">
-                    Static centre
-                  </span>
+                  <span>Position</span>
+                  <span className="clip-editor__row-value">{panLabel}</span>
                 </div>
                 <div className="clip-editor__row">
                   <span>Output</span>
                   <span className="clip-editor__row-value">1080×1920</span>
                 </div>
                 <p className="clip-editor__note">
-                  Subject tracking needs real face/object detection - out of
-                  scope for now. This takes a horizontally-centered vertical
-                  strip of the full-height frame.
+                  Drag the highlighted box on the preview above to choose
+                  what stays in frame - useful for keeping an off-center
+                  facecam or action in the vertical crop. Subject tracking
+                  would need real face/object detection, so this is a fixed
+                  position for the whole clip rather than a tracked one.
                 </p>
+                <button
+                  className="clip-editor__transcribe"
+                  onClick={() => setFramingPan(0)}
+                  disabled={Math.abs(framingPan) < 0.001}
+                >
+                  Center
+                </button>
               </div>
             )}
           </div>
@@ -297,7 +419,7 @@ export function ClipEditor() {
                 <div className="clip-editor__step-title">Captions</div>
                 <div className="clip-editor__step-summary">
                   {captionLines
-                    ? `${captionLines.length} lines · Whisper base.en`
+                    ? `${captionLines.length} lines`
                     : "Not transcribed yet"}
                 </div>
               </div>
@@ -308,17 +430,26 @@ export function ClipEditor() {
             </div>
             {openStep === 2 && (
               <div className="clip-editor__step-body">
-                <button
-                  className="clip-editor__transcribe"
-                  disabled={transcribe.status === "running"}
-                  onClick={doTranscribe}
-                >
-                  {transcribe.status === "running"
-                    ? "Transcribing…"
-                    : captionLines
-                      ? "Re-transcribe"
-                      : "Transcribe with Whisper"}
-                </button>
+                <div className="clip-editor__button-row">
+                  <button
+                    className="clip-editor__transcribe"
+                    disabled={transcribe.status === "running"}
+                    onClick={doTranscribe}
+                  >
+                    {transcribe.status === "running"
+                      ? "Transcribing…"
+                      : captionLines
+                        ? "Re-transcribe"
+                        : "Transcribe with Whisper"}
+                  </button>
+                  <button
+                    className="clip-editor__add-button"
+                    onClick={addCaptionAtPlayhead}
+                    title="Add a caption line starting at the playhead"
+                  >
+                    + Add line
+                  </button>
+                </div>
                 {transcribe.status === "error" && (
                   <p className="clip-editor__note clip-editor__note--error">
                     {transcribe.message}
@@ -333,16 +464,61 @@ export function ClipEditor() {
                   <div className="clip-editor__captions">
                     {captionLines.map((line) => (
                       <div key={line.id} className="clip-editor__caption">
-                        <span className="clip-editor__caption-time">
-                          {formatTime(line.start)}
-                        </span>
-                        <input
-                          className="clip-editor__caption-input"
-                          value={line.text}
-                          onChange={(e) =>
-                            updateCaptionText(line.id, e.target.value)
-                          }
-                        />
+                        <div className="clip-editor__caption-row">
+                          <input
+                            className="clip-editor__caption-input"
+                            value={line.text}
+                            placeholder="caption text"
+                            onChange={(e) =>
+                              updateCaptionText(line.id, e.target.value)
+                            }
+                          />
+                          <button
+                            className="clip-editor__caption-delete"
+                            title="Delete line"
+                            onClick={() => removeCaptionLine(line.id)}
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="clip-editor__caption-row">
+                          <input
+                            type="number"
+                            step={0.1}
+                            className="clip-editor__caption-time-input"
+                            value={line.start.toFixed(1)}
+                            onChange={(e) =>
+                              updateCaptionTiming(
+                                line.id,
+                                "start",
+                                Number(e.target.value),
+                              )
+                            }
+                          />
+                          <span className="clip-editor__caption-time-sep">
+                            →
+                          </span>
+                          <input
+                            type="number"
+                            step={0.1}
+                            className="clip-editor__caption-time-input"
+                            value={line.end.toFixed(1)}
+                            onChange={(e) =>
+                              updateCaptionTiming(
+                                line.id,
+                                "end",
+                                Number(e.target.value),
+                              )
+                            }
+                          />
+                          <button
+                            className="clip-editor__caption-seek"
+                            title="Seek to this line"
+                            onClick={() => seekTo(line.start)}
+                          >
+                            seek
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -365,38 +541,46 @@ export function ClipEditor() {
               <div>
                 <div className="clip-editor__step-title">Effects</div>
                 <div className="clip-editor__step-summary">
-                  {impactState.status === "done"
-                    ? `${impactState.impacts.length} hype moment${impactState.impacts.length === 1 ? "" : "s"} found`
-                    : "Auto flash + zoom on hype moments"}
+                  {effectiveEffectCount > 0
+                    ? `${effectiveEffectCount} hype moment${effectiveEffectCount === 1 ? "" : "s"}`
+                    : "Auto flash + zoom, or add your own"}
                 </div>
               </div>
               <div className="clip-editor__spacer" />
               <span className="clip-editor__step-tag">
-                {impactState.status === "done"
-                  ? impactState.impacts.length
-                  : "—"}
+                {effectiveEffectCount > 0 ? effectiveEffectCount : "—"}
               </span>
             </div>
             {openStep === 3 && (
               <div className="clip-editor__step-body">
-                <button
-                  className="clip-editor__transcribe"
-                  disabled={impactState.status === "running"}
-                  onClick={doDetectImpacts}
-                >
-                  {impactState.status === "running"
-                    ? "Analyzing…"
-                    : impactState.status === "done"
-                      ? "Re-detect moments"
-                      : "Detect hype moments"}
-                </button>
+                <div className="clip-editor__button-row">
+                  <button
+                    className="clip-editor__transcribe"
+                    disabled={impactState.status === "running"}
+                    onClick={doDetectImpacts}
+                  >
+                    {impactState.status === "running"
+                      ? "Analyzing…"
+                      : impactState.status === "done"
+                        ? "Re-detect moments"
+                        : "Detect hype moments"}
+                  </button>
+                  <button
+                    className="clip-editor__add-button"
+                    onClick={addManualImpactAtPlayhead}
+                    title="Add a flash + zoom at the playhead"
+                  >
+                    + Add at playhead
+                  </button>
+                </div>
                 {impactState.status === "error" && (
                   <p className="clip-editor__note clip-editor__note--error">
                     {impactState.message}
                   </p>
                 )}
                 {impactState.status === "done" &&
-                  impactState.impacts.length === 0 && (
+                  impactState.impacts.length === 0 &&
+                  manualImpacts.length === 0 && (
                     <p className="clip-editor__note">
                       No standout moments detected in this range.
                     </p>
@@ -409,14 +593,31 @@ export function ClipEditor() {
                         checked={applyEffects}
                         onChange={(e) => setApplyEffects(e.target.checked)}
                       />
-                      Flash + zoom punch at{" "}
+                      Auto-detected at{" "}
                       {impactState.impacts.map((t) => formatTime(t)).join(", ")}
                     </label>
                   )}
+                {manualImpacts.length > 0 && (
+                  <div className="clip-editor__impact-list">
+                    {manualImpacts.map((t) => (
+                      <div key={t} className="clip-editor__impact-chip">
+                        <span>{formatTime(t - startSec)}</span>
+                        <button
+                          className="clip-editor__caption-delete"
+                          title="Remove"
+                          onClick={() => removeManualImpact(t)}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <p className="clip-editor__note">
-                  Finds the loudest moments in the clip's audio and punches a
-                  quick flash + zoom-in on each one - reuses the same signal
-                  analysis as live detection, applied to this one clip.
+                  Auto-detect finds the loudest moments in the clip's audio
+                  and punches a flash + zoom-in on each. Add at playhead
+                  drops one manually wherever you pause the preview - both
+                  can be used together.
                 </p>
               </div>
             )}
@@ -455,6 +656,10 @@ export function ClipEditor() {
                   </span>
                 </div>
                 <div className="clip-editor__row">
+                  <span>Framing</span>
+                  <span className="clip-editor__row-value">{panLabel}</span>
+                </div>
+                <div className="clip-editor__row">
                   <span>Captions</span>
                   <span className="clip-editor__row-value">
                     {captionLines && captionLines.length > 0
@@ -465,10 +670,8 @@ export function ClipEditor() {
                 <div className="clip-editor__row">
                   <span>Effects</span>
                   <span className="clip-editor__row-value">
-                    {applyEffects &&
-                    impactState.status === "done" &&
-                    impactState.impacts.length > 0
-                      ? `${impactState.impacts.length} flash + zoom`
+                    {effectiveEffectCount > 0
+                      ? `${effectiveEffectCount} flash + zoom`
                       : "none"}
                   </span>
                 </div>

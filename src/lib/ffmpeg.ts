@@ -30,6 +30,9 @@ export interface RenderOptions {
   /** Impact timestamps (seconds, relative to the trim start) to punch a
    * flash + zoom into during render. */
   impactSeconds?: number[];
+  /** Horizontal crop position, -1 (left edge) to 1 (right edge), 0 =
+   * centered. Fixed for the whole render - see buildCropFilter. */
+  framingPan?: number;
 }
 
 export interface RenderResult {
@@ -52,12 +55,19 @@ export function summarizeFfmpegError(log: string): string {
   return excerpt.slice(0, 500);
 }
 
-// Static-center 9:16 crop: keep the full source height and take a
-// horizontally-centered vertical strip, then scale to a clean 1080x1920.
-// "Track subject" from the design mock would need real subject/face
-// tracking - out of scope for an honest v1, so this is the only framing
-// mode for now.
-const CROP_FILTER = "crop=ih*9/16:ih:(iw-ih*9/16)/2:0,scale=1080:1920";
+// 9:16 crop: keep the full source height and take a vertical strip,
+// horizontally positioned by `pan`. "Track subject" from the design mock
+// would need real subject/face tracking - out of scope for an honest v1 -
+// so this is a manually-positioned static crop rather than a tracked one.
+// pan is a single fixed value for the whole render (not time-varying), so
+// there's no need for crop's eval=frame mode here.
+function buildCropFilter(pan: number): string {
+  const clamped = Math.max(-1, Math.min(1, pan));
+  // (iw-ih*9/16)/2 is the centered x position; scaling that by (1+pan)
+  // slides it from the left edge (pan=-1) through center (pan=0) to the
+  // right edge (pan=1).
+  return `crop=ih*9/16:ih:(iw-ih*9/16)/2*(1+(${clamped})):0,scale=1080:1920`;
+}
 
 // ffmpeg's subtitles filter treats ':' and '\' specially in its own arg
 // syntax, regardless of the OS - escape a Windows path for use inside it.
@@ -73,7 +83,7 @@ export async function renderVertical(
 ): Promise<RenderResult> {
   const duration = Math.max(0.1, opts.endSeconds - opts.startSeconds);
 
-  const stages = [CROP_FILTER];
+  const stages = [buildCropFilter(opts.framingPan ?? 0)];
   const zoomFilter = buildZoomPunchFilter(opts.impactSeconds ?? []);
   if (zoomFilter) stages.push(zoomFilter);
   if (opts.captionsSrtPath) {
