@@ -42,9 +42,12 @@ export function ClipsProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     const rows = await listClips();
     // Reconcile against disk: a clip whose file was removed outside the
-    // app (or from the library) shouldn't keep showing up here.
+    // app (or from the library) shouldn't keep showing up here. A skipped
+    // clip's file is deleted deliberately (see resolveClip below) - its row
+    // stays so kept/skipped stats stay accurate, so a missing file there
+    // isn't a sign of an external deletion to reconcile away.
     const existence = await Promise.all(
-      rows.map((r) => pathExists(r.path)),
+      rows.map((r) => (r.kept === false ? true : pathExists(r.path))),
     );
     const missing = rows.filter((_, i) => !existence[i]);
     if (missing.length > 0) {
@@ -86,10 +89,22 @@ export function ClipsProvider({ children }: { children: ReactNode }) {
 
   const resolveClip = useCallback(
     async (id: number, kept: boolean) => {
+      // Skipped clips delete their video immediately to save disk - the
+      // proposal was noise, no reason to keep the file around.
+      if (!kept) {
+        const clip = clips.find((c) => c.id === id);
+        if (clip) {
+          try {
+            await invoke("delete_file", { path: clip.path });
+          } catch (err) {
+            console.error("[clips] failed to delete skipped clip file:", err);
+          }
+        }
+      }
       await setClipDecision(id, kept);
       await refresh();
     },
-    [refresh],
+    [clips, refresh],
   );
 
   return (

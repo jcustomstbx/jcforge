@@ -89,27 +89,31 @@ function ClipCard({ clip }: { clip: Clip }) {
 
 export function ClipLibrary() {
   const { clips, loading, refresh } = useClips();
+  // Skipped clips delete their video file immediately (see clips.tsx) - the
+  // row sticks around only so kept/skipped stats stay accurate, not to show
+  // as a broken library card with nothing to open.
+  const visibleClips = clips.filter((c) => c.kept !== false);
 
   return (
     <div className="clip-library">
       <div className="clip-library__header">
         <h1 className="clip-library__title">Clip library</h1>
         <span className="clip-library__count">
-          {loading ? "loading…" : `${clips.length} clips`}
+          {loading ? "loading…" : `${visibleClips.length} clips`}
         </span>
         <div className="clip-library__spacer" />
         <button className="clip-library__refresh" onClick={() => refresh()}>
           Refresh
         </button>
       </div>
-      {!loading && clips.length === 0 && (
+      {!loading && visibleClips.length === 0 && (
         <div className="clip-library__empty">
           Nothing caught yet. Press F9 (or use the button on Live session)
-          while OBS's replay buffer is running to save your first clip.
+          while the replay buffer is running to save your first clip.
         </div>
       )}
       <div className="clip-library__grid">
-        {clips.map((clip) => (
+        {visibleClips.map((clip) => (
           <ClipCard key={clip.id} clip={clip} />
         ))}
       </div>

@@ -18,6 +18,12 @@ export type ObsConnectionStatus =
   | "connected"
   | "error";
 
+export interface ObsVideoSettings {
+  outputWidth: number;
+  outputHeight: number;
+  fps: number;
+}
+
 export interface ObsState {
   status: ObsConnectionStatus;
   error: string | null;
@@ -28,6 +34,7 @@ export interface ObsState {
   micInputName: string | null;
   sceneName: string | null;
   sceneChangedAt: number;
+  videoSettings: ObsVideoSettings | null;
   connect: (url?: string, password?: string) => void;
   disconnect: () => void;
   triggerManualCapture: () => Promise<string | null>;
@@ -68,6 +75,9 @@ export function ObsProvider({ children }: { children: ReactNode }) {
   const [micInputName, setMicInputNameState] = useState<string | null>(null);
   const [sceneName, setSceneNameState] = useState<string | null>(null);
   const [sceneChangedAt, setSceneChangedAt] = useState<number>(0);
+  const [videoSettings, setVideoSettings] = useState<ObsVideoSettings | null>(
+    null,
+  );
   const sceneNameRef = useRef<string | null>(null);
 
   const setMicInputName = useCallback((name: string | null) => {
@@ -92,6 +102,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       setMicInputName(null);
       setMicLevelValue(null);
       setSceneName(null);
+      setVideoSettings(null);
     });
 
     obs.on("ReplayBufferStateChanged", (data) => {
@@ -167,6 +178,16 @@ export function ObsProvider({ children }: { children: ReactNode }) {
         } catch (err) {
           console.error("[obs] failed to get current scene:", err);
         }
+        try {
+          const v = await obs.call("GetVideoSettings");
+          setVideoSettings({
+            outputWidth: v.outputWidth,
+            outputHeight: v.outputHeight,
+            fps: v.fpsNumerator / v.fpsDenominator,
+          });
+        } catch (err) {
+          console.error("[obs] failed to get video settings:", err);
+        }
       })
       .catch((err: unknown) => {
         setStatus("error");
@@ -231,6 +252,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     setMicInputName(null);
     setMicLevelValue(null);
     setSceneName(null);
+    setVideoSettings(null);
   }, [setMicInputName, setSceneName]);
 
   useEffect(() => {
@@ -248,6 +270,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     micInputName,
     sceneName,
     sceneChangedAt,
+    videoSettings,
     connect,
     disconnect,
     triggerManualCapture,
