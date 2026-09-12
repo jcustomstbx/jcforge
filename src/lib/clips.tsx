@@ -27,11 +27,12 @@ interface ClipsState {
 
 const ClipsContext = createContext<ClipsState | null>(null);
 
-async function pathExists(path: string): Promise<boolean> {
+async function pathsExist(paths: string[]): Promise<boolean[]> {
+  if (paths.length === 0) return [];
   try {
-    return await invoke<boolean>("path_exists", { path });
+    return await invoke<boolean[]>("paths_exist", { paths });
   } catch {
-    return true; // don't prune on an inconclusive check
+    return paths.map(() => true); // don't prune on an inconclusive check
   }
 }
 
@@ -45,10 +46,12 @@ export function ClipsProvider({ children }: { children: ReactNode }) {
     // app (or from the library) shouldn't keep showing up here. A skipped
     // clip's file is deleted deliberately (see resolveClip below) - its row
     // stays so kept/skipped stats stay accurate, so a missing file there
-    // isn't a sign of an external deletion to reconcile away.
-    const existence = await Promise.all(
-      rows.map((r) => (r.kept === false ? true : pathExists(r.path))),
-    );
+    // isn't a sign of an external deletion to reconcile away. Checked in
+    // one IPC round trip for the whole library rather than one per clip.
+    const toCheck = rows.filter((r) => r.kept !== false);
+    const checked = await pathsExist(toCheck.map((r) => r.path));
+    const existsById = new Map(toCheck.map((r, i) => [r.id, checked[i]]));
+    const existence = rows.map((r) => existsById.get(r.id) ?? true);
     const missing = rows.filter((_, i) => !existence[i]);
     if (missing.length > 0) {
       await Promise.all(missing.map((r) => deleteClip(r.id)));

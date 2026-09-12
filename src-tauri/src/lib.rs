@@ -20,6 +20,17 @@ fn path_exists(path: String) -> bool {
     std::path::Path::new(&path).exists()
 }
 
+// One IPC round trip for a whole library instead of one per clip - the
+// library reconciles against disk on every refresh (add/remove/resolve a
+// clip), so this scales with library size otherwise.
+#[tauri::command]
+fn paths_exist(paths: Vec<String>) -> Vec<bool> {
+    paths
+        .iter()
+        .map(|p| std::path::Path::new(p).exists())
+        .collect()
+}
+
 #[tauri::command]
 fn delete_file(path: String) -> Result<(), String> {
     std::fs::remove_file(&path).map_err(|e| e.to_string())
@@ -160,6 +171,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_file_size,
             path_exists,
+            paths_exist,
             delete_file,
             read_text_file,
             write_text_file,
