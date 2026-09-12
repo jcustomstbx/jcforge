@@ -31,6 +31,7 @@ export interface StreamlabsState {
 const STREAMLABS_URL = "http://127.0.0.1:59650/api";
 const POLL_MS = 2000;
 const SAVE_TIMEOUT_MS = 15000;
+const RECONNECT_DELAY_MS = 3000;
 
 // Streamlabs' JSON-RPC 2.0 protocol over a SockJS socket - confirmed against
 // their own example client (index.html in the remote-control docs). Not
@@ -178,56 +179,75 @@ export function StreamlabsProvider({ children }: { children: ReactNode }) {
 
     let cancelled = false;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
-    const client = new StreamlabsClient(STREAMLABS_URL, streamlabsToken);
-    clientRef.current = client;
-    setStatus("connecting");
-    setError(null);
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
-    client.onClose = () => {
+    // Named so both an unexpected close and a failed connect attempt can
+    // retry through the same path - without this, one drop (Streamlabs
+    // Desktop closed/crashed, network blip) silently ends detection for
+    // the rest of the session with no way back except manually toggling
+    // the backend off and on.
+    const attemptConnect = () => {
       if (cancelled) return;
-      setStatus("disconnected");
-      setReplayBufferActive(null);
-      setSceneName(null);
+      const client = new StreamlabsClient(STREAMLABS_URL, streamlabsToken);
+      clientRef.current = client;
+      setStatus("connecting");
+      setError(null);
+
+      client.onClose = () => {
+        if (cancelled) return;
+        setStatus("disconnected");
+        setReplayBufferActive(null);
+        setSceneName(null);
+        if (pollTimer) {
+          clearInterval(pollTimer);
+          pollTimer = null;
+        }
+        reconnectTimer = setTimeout(attemptConnect, RECONNECT_DELAY_MS);
+      };
+
+      client
+        .connect()
+        .then(() => {
+          if (cancelled) return;
+          setStatus("connected");
+          pollTimer = setInterval(async () => {
+            try {
+              const model = (await client.request(
+                "StreamingService",
+                "getModel",
+              )) as { replayBufferStatus?: unknown } | null;
+              setReplayBufferActive(isReplayActive(model?.replayBufferStatus));
+            } catch (err) {
+              console.error("[streamlabs] getModel poll failed:", err);
+            }
+            try {
+              const scene = (await client.request(
+                "ScenesService",
+                "activeScene",
+              )) as { name?: string } | null;
+              if (scene?.name) setSceneName(scene.name);
+            } catch (err) {
+              console.error("[streamlabs] activeScene poll failed:", err);
+            }
+          }, POLL_MS);
+        })
+        .catch((err: unknown) => {
+          if (cancelled) return;
+          setStatus("error");
+          const message = err instanceof Error ? err.message : String(err);
+          setError(message);
+          console.error("[streamlabs] connect failed:", err);
+          reconnectTimer = setTimeout(attemptConnect, RECONNECT_DELAY_MS);
+        });
     };
 
-    client
-      .connect()
-      .then(() => {
-        if (cancelled) return;
-        setStatus("connected");
-        pollTimer = setInterval(async () => {
-          try {
-            const model = (await client.request(
-              "StreamingService",
-              "getModel",
-            )) as { replayBufferStatus?: unknown } | null;
-            setReplayBufferActive(isReplayActive(model?.replayBufferStatus));
-          } catch (err) {
-            console.error("[streamlabs] getModel poll failed:", err);
-          }
-          try {
-            const scene = (await client.request(
-              "ScenesService",
-              "activeScene",
-            )) as { name?: string } | null;
-            if (scene?.name) setSceneName(scene.name);
-          } catch (err) {
-            console.error("[streamlabs] activeScene poll failed:", err);
-          }
-        }, POLL_MS);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setStatus("error");
-        const message = err instanceof Error ? err.message : String(err);
-        setError(message);
-        console.error("[streamlabs] connect failed:", err);
-      });
+    attemptConnect();
 
     return () => {
       cancelled = true;
       if (pollTimer) clearInterval(pollTimer);
-      client.disconnect();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      clientRef.current?.disconnect();
       clientRef.current = null;
     };
   }, [streamlabsToken, setSceneName]);

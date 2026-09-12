@@ -1,6 +1,6 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { emit, listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import logo from "./assets/logo.png";
 import {
@@ -11,6 +11,7 @@ import {
 import "./DockApp.css";
 
 const appWindow = getCurrentWindow();
+const FLASH_DURATION_MS = 1600;
 
 const EMPTY_STATE: DockState = {
   obsStatus: "disconnected",
@@ -20,6 +21,7 @@ const EMPTY_STATE: DockState = {
   motionScore: 0,
   voiceWave: [],
   proposal: null,
+  lastResolution: null,
   keptCount: 0,
   skippedCount: 0,
 };
@@ -45,15 +47,31 @@ function Meter({ label, value }: { label: string; value: number }) {
 
 export function DockApp() {
   const [state, setState] = useState<DockState>(EMPTY_STATE);
+  const [flash, setFlash] = useState<"kept" | "skipped" | null>(null);
+  const lastSeenResolutionAt = useRef<number | null>(null);
 
   useEffect(() => {
     const unlisten = listen<DockState>(DOCK_STATE_EVENT, (event) => {
       setState(event.payload);
+      const resolution = event.payload.lastResolution;
+      if (resolution && resolution.at !== lastSeenResolutionAt.current) {
+        lastSeenResolutionAt.current = resolution.at;
+        setFlash(resolution.type);
+      }
     });
     return () => {
       unlisten.then((fn) => fn());
     };
   }, []);
+
+  // A click (or an auto-approved capture) used to just silently revert to
+  // "Watching for moments…" with no confirmation, which made it genuinely
+  // hard to tell whether it registered - flash a brief confirmation instead.
+  useEffect(() => {
+    if (!flash) return;
+    const timer = setTimeout(() => setFlash(null), FLASH_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [flash]);
 
   const act = (action: "keep" | "skip") => {
     if (!state.proposal) return;
@@ -86,15 +104,22 @@ export function DockApp() {
         <div
           className={
             "dock-app__alert" +
-            (state.proposal ? " dock-app__alert--active" : "")
+            (state.proposal ? " dock-app__alert--active" : "") +
+            (flash ? ` dock-app__alert--${flash}` : "")
           }
         >
           <span className="dock-app__alert-dot" />
           <span className="dock-app__alert-text">
-            {state.proposal ? "Moment detected" : "Watching for moments…"}
+            {flash
+              ? flash === "kept"
+                ? "Kept ✓"
+                : "Skipped"
+              : state.proposal
+                ? "Moment detected"
+                : "Watching for moments…"}
           </span>
           <div className="dock-app__spacer" />
-          {state.proposal && (
+          {state.proposal && !flash && (
             <span className="dock-app__alert-score">
               {state.proposal.score.toFixed(2)}
             </span>

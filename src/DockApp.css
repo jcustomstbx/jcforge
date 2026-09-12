@@ -111,6 +111,27 @@ body {
   color: var(--alert-text);
 }
 
+.dock-app__alert--kept {
+  background: var(--accent-tint);
+  border-color: var(--accent-border);
+}
+
+.dock-app__alert--kept .dock-app__alert-dot {
+  background: var(--accent);
+}
+
+.dock-app__alert--kept .dock-app__alert-text {
+  color: var(--accent);
+}
+
+.dock-app__alert--skipped .dock-app__alert-dot {
+  background: var(--text-muted);
+}
+
+.dock-app__alert--skipped .dock-app__alert-text {
+  color: var(--text-muted);
+}
+
 .dock-app__alert-score {
   font-size: 11.5px;
   font-family: var(--font-mono);

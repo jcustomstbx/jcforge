@@ -42,6 +42,7 @@ export interface ObsState {
 }
 
 const DEFAULT_URL = "ws://127.0.0.1:4455";
+const RECONNECT_DELAY_MS = 3000;
 
 // OBS's built-in "Audio Input Capture" source kinds across platforms - used
 // to auto-pick a mic input without needing a settings UI yet.
@@ -79,6 +80,13 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     null,
   );
   const sceneNameRef = useRef<string | null>(null);
+  // Auto-reconnect after an unexpected drop (OBS closed/crashed, network
+  // blip) - without this, one disconnect silently ends detection for the
+  // rest of the session with no way back short of the manual retry click.
+  // Only a deliberate disconnect() call suppresses it.
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deliberateDisconnectRef = useRef(false);
+  const connectRef = useRef<(url?: string, password?: string) => void>(() => {});
 
   const setMicInputName = useCallback((name: string | null) => {
     micInputNameRef.current = name;
@@ -103,6 +111,12 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       setMicLevelValue(null);
       setSceneName(null);
       setVideoSettings(null);
+      if (!deliberateDisconnectRef.current && reconnectTimerRef.current === null) {
+        reconnectTimerRef.current = setTimeout(() => {
+          reconnectTimerRef.current = null;
+          connectRef.current();
+        }, RECONNECT_DELAY_MS);
+      }
     });
 
     obs.on("ReplayBufferStateChanged", (data) => {
@@ -132,6 +146,10 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     });
 
     return () => {
+      if (reconnectTimerRef.current !== null) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       obs.disconnect();
       obsRef.current = null;
     };
@@ -140,6 +158,11 @@ export function ObsProvider({ children }: { children: ReactNode }) {
   const connect = useCallback((nextUrl?: string, password?: string) => {
     const obs = obsRef.current;
     if (!obs) return;
+    deliberateDisconnectRef.current = false;
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     const target = nextUrl ?? url;
     setUrl(target);
     setStatus("connecting");
@@ -194,8 +217,16 @@ export function ObsProvider({ children }: { children: ReactNode }) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         console.error("[obs] connect failed:", target, err);
+        if (!deliberateDisconnectRef.current && reconnectTimerRef.current === null) {
+          reconnectTimerRef.current = setTimeout(() => {
+            reconnectTimerRef.current = null;
+            connectRef.current();
+          }, RECONNECT_DELAY_MS);
+        }
       });
   }, [url, setMicInputName, setSceneName]);
+
+  connectRef.current = connect;
 
   const captureScreenshot = useCallback(async (): Promise<string | null> => {
     const obs = obsRef.current;
@@ -244,6 +275,11 @@ export function ObsProvider({ children }: { children: ReactNode }) {
   }, [status]);
 
   const disconnect = useCallback(() => {
+    deliberateDisconnectRef.current = true;
+    if (reconnectTimerRef.current !== null) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
     obsRef.current?.disconnect();
     setStatus("disconnected");
     setObsVersion(null);
