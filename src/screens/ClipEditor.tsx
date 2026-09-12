@@ -89,6 +89,16 @@ export function ClipEditor() {
   const clip = clips.find((c) => c.id === nav.editingClipId) ?? null;
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  // The zoom/flash/caption preview overlays are driven imperatively (see
+  // the rAF effect below) rather than through React state, so a playing
+  // video doesn't force a full re-render of the whole editor - steps rail,
+  // caption list and all - on every single animation frame.
+  const zoomLayerRef = useRef<HTMLDivElement>(null);
+  const flashOverlayRef = useRef<HTMLDivElement>(null);
+  const captionOverlayRef = useRef<HTMLDivElement>(null);
+  const flashTimesRef = useRef<number[]>([]);
+  const zoomTimesRef = useRef<number[]>([]);
+  const captionLinesRef = useRef<CaptionLine[] | null>(null);
   const [openStep, setOpenStep] = useState<1 | 2 | 3 | 4>(1);
   const [startSec, setStartSec] = useState(0);
   const [endSec, setEndSec] = useState(clip?.durationSeconds ?? 0);
@@ -127,6 +137,9 @@ export function ClipEditor() {
     setManualImpacts([]);
     setFramingPan(0);
     setNativeSize(null);
+    if (zoomLayerRef.current) zoomLayerRef.current.style.transform = "scale(1)";
+    if (flashOverlayRef.current) flashOverlayRef.current.style.opacity = "0";
+    if (captionOverlayRef.current) captionOverlayRef.current.textContent = "";
   }, [clip?.id]);
 
   // Detected impacts are relative to the current trim window - invalidate
@@ -135,13 +148,38 @@ export function ClipEditor() {
     setImpactState({ status: "idle" });
   }, [startSec, endSec]);
 
+  // Writes the zoom/flash/caption preview directly to the DOM instead of
+  // through React state - called up to 60x/sec while playing, which would
+  // otherwise re-render the entire editor (steps rail, caption list, all of
+  // it) that often. Reads the *Ref mirrors below rather than closing over
+  // the render's own values, so it stays correct without needing to be
+  // recreated every time an effect/caption is added or edited.
+  const updateOverlay = (t: number) => {
+    if (zoomLayerRef.current) {
+      zoomLayerRef.current.style.transform = `scale(${previewZoomFactor(t, zoomTimesRef.current)})`;
+    }
+    if (flashOverlayRef.current) {
+      flashOverlayRef.current.style.opacity = String(
+        previewFlashOpacity(t, flashTimesRef.current),
+      );
+    }
+    if (captionOverlayRef.current) {
+      const line =
+        captionLinesRef.current?.find((l) => t >= l.start && t < l.end) ?? null;
+      captionOverlayRef.current.textContent = line?.text ?? "";
+    }
+  };
+
   // Loop playback within the selected trim range, so scrubbing the handles
   // doubles as an in/out preview instead of needing to play the whole clip.
+  // Also the coarse (browser-throttled, often ~250ms) path for updating
+  // currentTime and the preview overlay while paused/scrubbing.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     const onTimeUpdate = () => {
       setCurrentTime(video.currentTime);
+      updateOverlay(video.currentTime);
       if (video.currentTime >= endSec) {
         video.currentTime = startSec;
         if (video.paused) video.pause();
@@ -149,20 +187,21 @@ export function ClipEditor() {
     };
     video.addEventListener("timeupdate", onTimeUpdate);
     return () => video.removeEventListener("timeupdate", onTimeUpdate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startSec, endSec]);
 
-  // The caption/flash/zoom preview overlays are keyed off currentTime -
-  // native "timeupdate" events are too coarse (browser-throttled, often
-  // ~250ms) to make a 120ms flash window or the zoom's easing read smoothly
-  // during playback, so poll every frame while playing instead. Scrubbing
-  // (paused) is already covered by the timeupdate listener above, which
-  // still fires once per seek.
+  // The overlay needs finer granularity than "timeupdate" gives during
+  // playback - too coarse to make a 120ms flash window or the zoom's
+  // easing read smoothly - so poll every frame while playing instead.
+  // currentTime (React state, for the trim bar/markers/button labels) still
+  // only updates at timeupdate's native rate, since those don't need
+  // per-frame smoothness and re-render more of the tree.
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     let raf = 0;
     const loop = () => {
-      setCurrentTime(video.currentTime);
+      updateOverlay(video.currentTime);
       raf = requestAnimationFrame(loop);
     };
     const onPlay = () => {
@@ -176,6 +215,7 @@ export function ClipEditor() {
       video.removeEventListener("pause", onPause);
       cancelAnimationFrame(raf);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clip?.id]);
 
   // Track the source's native pixel size so the framing preview's overlay
@@ -235,7 +275,12 @@ export function ClipEditor() {
   const doDetectImpacts = async () => {
     setImpactState({ status: "running" });
     try {
-      const impacts = await detectImpactMoments(clip.path, startSec, endSec);
+      const impacts = await detectImpactMoments(
+        clip.path,
+        startSec,
+        endSec,
+        captionLines,
+      );
       setImpactState({ status: "done", impacts });
     } catch (err) {
       console.error("[editor] impact detection failed:", err);
@@ -275,6 +320,12 @@ export function ClipEditor() {
     .filter((p) => p.type === "zoom" || p.type === "both")
     .map((p) => p.time);
   const effectiveEffectCount = impactsInRange.length;
+
+  // Keep the imperative preview loop's inputs current without making it
+  // depend on (and re-subscribe over) values that change on every edit.
+  flashTimesRef.current = flashTimesAbsolute;
+  zoomTimesRef.current = zoomTimesAbsolute;
+  captionLinesRef.current = captionLines;
 
   const addManualImpactAtPlayhead = () => {
     const t = currentTime;
@@ -366,16 +417,6 @@ export function ClipEditor() {
       ? "Centered"
       : `${Math.round(Math.abs(framingPan) * 100)}% ${framingPan < 0 ? "left" : "right"}`;
 
-  // Live preview overlays - a CSS approximation of what the render will
-  // actually burn in, so you can judge caption/effect timing while
-  // scrubbing instead of only finding out after a full ffmpeg pass.
-  const activeCaption =
-    captionLines?.find(
-      (l) => currentTime >= l.start && currentTime < l.end,
-    ) ?? null;
-  const zoomFactor = previewZoomFactor(currentTime, zoomTimesAbsolute);
-  const flashOpacity = previewFlashOpacity(currentTime, flashTimesAbsolute);
-
   const trimMarkers: TrimBarMarker[] = allImpacts.map((p) => ({
     time: p.time,
     variant: p.type,
@@ -404,10 +445,7 @@ export function ClipEditor() {
                 : undefined
             }
           >
-            <div
-              className="clip-editor__zoom-layer"
-              style={{ transform: `scale(${zoomFactor})` }}
-            >
+            <div className="clip-editor__zoom-layer" ref={zoomLayerRef}>
               {videoSrc && (
                 <video
                   ref={videoRef}
@@ -417,17 +455,12 @@ export function ClipEditor() {
                 />
               )}
             </div>
-            {flashOpacity > 0 && (
-              <div
-                className="clip-editor__flash-overlay"
-                style={{ opacity: flashOpacity }}
-              />
-            )}
-            {activeCaption && activeCaption.text && (
-              <div className="clip-editor__caption-overlay">
-                {activeCaption.text}
-              </div>
-            )}
+            <div
+              className="clip-editor__flash-overlay"
+              ref={flashOverlayRef}
+              style={{ opacity: 0 }}
+            />
+            <div className="clip-editor__caption-overlay" ref={captionOverlayRef} />
             {openStep === 1 && (
               <FramingPreview
                 nativeSize={nativeSize}
@@ -737,13 +770,17 @@ export function ClipEditor() {
                   </div>
                 )}
                 <p className="clip-editor__note">
-                  Auto-detect finds the loudest moments in the clip's audio
-                  and always applies both effects. Pick a type above, then
-                  play or scrub to the spot you want and add it there - or
-                  click a dot on the timeline to jump back to a point you've
-                  already placed. The preview shows timing and intensity
-                  live, though it zooms the full source frame rather than
-                  the cropped 9:16 output.
+                  Auto-detect combines loud audio peaks with excited
+                  language in the transcript ("let's go", laughing,
+                  swearing) when one exists, so a loud but unremarkable
+                  noise doesn't win purely on volume, and a quiet reaction
+                  can still surface. Transcribe first (step 2) for the best
+                  results - it still works without one, just audio-only.
+                  Pick a type above, then play or scrub to the spot you want
+                  and add it there - or click a dot on the timeline to jump
+                  back to a point you've already placed. The preview shows
+                  timing and intensity live, though it zooms the full source
+                  frame rather than the cropped 9:16 output.
                 </p>
               </div>
             )}
