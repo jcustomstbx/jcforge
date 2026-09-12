@@ -3,30 +3,44 @@
 // manual effects timeline, so the app keeps doing this for you instead of
 // turning the editor into a full effects tool.
 
-const FLASH_HALF_WINDOW = 0.06;
-
-const ZOOM_WINDOW = 0.15;
+export const DEFAULT_FLASH_DURATION_SEC = 0.5;
+export const DEFAULT_ZOOM_DURATION_SEC = 0.4;
 const ZOOM_AMPLITUDE = 0.12;
+// How much to boost brightness at a flash's peak, once desaturated to gray -
+// found by testing against a synthetic clip: below this, saturated colours
+// (pure red/blue/etc） still show through at the "peak" instead of reading
+// as a clean white flash.
+const FLASH_BRIGHTNESS = 10;
 
-/** A hard flash to white at each impact time, gated by `enable` rather than
- * built from `fade`. `fade` ramps to its color and then HOLDS that state
- * for every subsequent frame forever (it's built for a one-time fade at
- * the start/end of a clip, not a momentary flash) - chaining a fade-out
- * then fade-in looked right in isolation but actually left the entire
- * rest of the video solid white from the first impact onward. Confirmed
- * by extracting frames before/during/after the window: `lut` gated with
- * `enable` correctly releases back to the original frame afterward, since
- * enable-gated filters are stateless (a disabled frame just passes
- * through unchanged) where `fade` is not. */
-export function buildFlashFilter(impacts: number[]): string | null {
-  if (impacts.length === 0) return null;
-  const windows = impacts
+function raisedCosineBumpSumExpr(impacts: number[], halfWindow: number): string {
+  return impacts
     .map(
       (t) =>
-        `between(t\\,${(t - FLASH_HALF_WINDOW).toFixed(3)}\\,${(t + FLASH_HALF_WINDOW).toFixed(3)})`,
+        `(0.5*(1+cos(PI*min(abs(t-${t.toFixed(3)})/${halfWindow.toFixed(3)},1))))`,
     )
     .join("+");
-  return `lut=c0=255:c1=255:c2=255:enable='${windows}'`;
+}
+
+/** A flash to white at each impact time that actually fades in and out,
+ * rather than cutting hard - `hue`'s saturation and brightness both accept
+ * per-frame time-varying expressions, so driving saturation down to 0 and
+ * brightness up together at the peak desaturates-and-blows-out to white,
+ * then eases back to the original frame. Confirmed by extracting frames
+ * before/during/after: unlike `fade` (which permanently holds its end
+ * colour for every frame afterward - it's built for a one-time fade at a
+ * clip's start/end, not a momentary pulse), this cleanly reverts once the
+ * bump decays, since at bump=0 both saturation and brightness are no-ops.
+ * Multiple overlapping impacts sum their bumps, clamped to 1 so saturation
+ * never goes negative (which reads as a colour-inverted glitch rather than
+ * white). */
+export function buildFlashFilter(
+  impacts: number[],
+  durationSec: number = DEFAULT_FLASH_DURATION_SEC,
+): string | null {
+  if (impacts.length === 0) return null;
+  const halfWindow = durationSec / 2;
+  const bump = `min((${raisedCosineBumpSumExpr(impacts, halfWindow)}),1)`;
+  return `hue=s='1-${bump}':b='${FLASH_BRIGHTNESS}*${bump}'`;
 }
 
 /** A brief punch-in zoom centered on each impact time. ffmpeg's crop filter
@@ -41,33 +55,48 @@ export function buildFlashFilter(impacts: number[]): string | null {
  * linear ramp, which has a sharp, mechanical-looking corner right at the
  * peak - the cosine curve is what reads as a deliberate "punch" instead of
  * a linear zoom. */
-export function buildZoomPunchFilter(impacts: number[]): string | null {
+export function buildZoomPunchFilter(
+  impacts: number[],
+  durationSec: number = DEFAULT_ZOOM_DURATION_SEC,
+): string | null {
   if (impacts.length === 0) return null;
-  const bumpSum = impacts
-    .map(
-      (t) =>
-        `(0.5*(1+cos(PI*min(abs(t-${t.toFixed(3)})/${ZOOM_WINDOW},1))))`,
-    )
-    .join("+");
+  const halfWindow = durationSec / 2;
+  const bumpSum = raisedCosineBumpSumExpr(impacts, halfWindow);
   const zoom = `(1+${ZOOM_AMPLITUDE}*(${bumpSum}))`;
   return `scale=w='1080*${zoom}':h='1920*${zoom}':eval=frame,crop=1080:1920`;
 }
 
 /** JS-side equivalents of the same math above, for the editor's live
- * preview (a CSS transform, not an ffmpeg render) - kept in this file and
- * built from the same constants so the preview can't silently drift from
+ * preview (a CSS transform/opacity, not an ffmpeg render) - built from the
+ * same constants and formulas so the preview can't silently drift from
  * what actually gets rendered. */
-export function previewZoomFactor(t: number, impacts: number[]): number {
+export function previewZoomFactor(
+  t: number,
+  impacts: number[],
+  durationSec: number = DEFAULT_ZOOM_DURATION_SEC,
+): number {
+  const halfWindow = durationSec / 2;
   let bump = 0;
   for (const impactT of impacts) {
     const d = Math.abs(t - impactT);
-    if (d < ZOOM_WINDOW) bump += 0.5 * (1 + Math.cos((Math.PI * d) / ZOOM_WINDOW));
+    if (d < halfWindow) bump += 0.5 * (1 + Math.cos((Math.PI * d) / halfWindow));
   }
   return 1 + ZOOM_AMPLITUDE * bump;
 }
 
-export function previewFlashOpacity(t: number, impacts: number[]): number {
-  return impacts.some((impactT) => Math.abs(t - impactT) <= FLASH_HALF_WINDOW)
-    ? 1
-    : 0;
+/** 0..1 "how much white" - the CSS preview uses a plain white overlay with
+ * this as its opacity, a reasonable stand-in for the render's actual
+ * desaturate+brighten approach (both reach solid white at the peak). */
+export function previewFlashOpacity(
+  t: number,
+  impacts: number[],
+  durationSec: number = DEFAULT_FLASH_DURATION_SEC,
+): number {
+  const halfWindow = durationSec / 2;
+  let bump = 0;
+  for (const impactT of impacts) {
+    const d = Math.abs(t - impactT);
+    if (d < halfWindow) bump += 0.5 * (1 + Math.cos((Math.PI * d) / halfWindow));
+  }
+  return Math.min(1, bump);
 }

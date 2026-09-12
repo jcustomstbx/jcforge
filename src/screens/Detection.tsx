@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useDetection } from "../lib/detection";
 import {
   useSettings,
@@ -10,6 +10,7 @@ import { runBacktest, type BacktestResult } from "../lib/backtest";
 import { formatTime } from "../lib/format";
 import { SignalMeter } from "../components/SignalMeter";
 import { ExcitementTimeline } from "../components/ExcitementTimeline";
+import { TuningSlider } from "../components/TuningSlider";
 import "./Detection.css";
 
 const PRESETS: { label: string; weights: DetectionWeights }[] = [
@@ -21,67 +22,6 @@ const PRESETS: { label: string; weights: DetectionWeights }[] = [
 
 function weightsEqual(a: DetectionWeights, b: DetectionWeights): boolean {
   return a.voice === b.voice && a.chat === b.chat && a.motion === b.motion;
-}
-
-/** A slider that shows every drag movement immediately but only commits
- * (and persists) the value after motion stops - a live-tuned threshold/
- * weight feeds straight into the running detection tick loop, and
- * committing on every intermediate drag step would restart that loop's
- * interval dozens of times per second for nothing. */
-function TuningSlider({
-  label,
-  value,
-  min,
-  max,
-  step,
-  format,
-  onCommit,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  format: (v: number) => string;
-  onCommit: (v: number) => void;
-}) {
-  const [draft, setDraft] = useState(value);
-  const draftRef = useRef(value);
-
-  useEffect(() => {
-    draftRef.current = value;
-    setDraft(value);
-  }, [value]);
-
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (draftRef.current !== value) onCommit(draftRef.current);
-    }, 200);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [draft]);
-
-  return (
-    <div className="tuning-slider">
-      <div className="tuning-slider__row">
-        <span className="tuning-slider__label">{label}</span>
-        <span className="tuning-slider__value">{format(draft)}</span>
-      </div>
-      <input
-        type="range"
-        className="tuning-slider__input"
-        min={min}
-        max={max}
-        step={step}
-        value={draft}
-        onChange={(e) => {
-          const v = Number(e.target.value);
-          draftRef.current = v;
-          setDraft(v);
-        }}
-      />
-    </div>
-  );
 }
 
 function formatSessionLabel(session: SessionSummary): string {

@@ -13,10 +13,16 @@ import {
   type CaptionLine,
 } from "../lib/captions";
 import { detectImpactMoments } from "../lib/impactDetection";
-import { previewFlashOpacity, previewZoomFactor } from "../lib/effects";
+import {
+  previewFlashOpacity,
+  previewZoomFactor,
+  DEFAULT_FLASH_DURATION_SEC,
+  DEFAULT_ZOOM_DURATION_SEC,
+} from "../lib/effects";
 import { formatTime } from "../lib/format";
 import { TrimBar, type TrimBarMarker } from "../components/TrimBar";
 import { FramingPreview } from "../components/FramingPreview";
+import { TuningSlider } from "../components/TuningSlider";
 import "./ClipEditor.css";
 
 function filename(path: string): string {
@@ -148,6 +154,8 @@ export function ClipEditor() {
   const captionOverlayRef = useRef<HTMLDivElement>(null);
   const flashTimesRef = useRef<number[]>([]);
   const zoomTimesRef = useRef<number[]>([]);
+  const flashDurationRef = useRef(DEFAULT_FLASH_DURATION_SEC);
+  const zoomDurationRef = useRef(DEFAULT_ZOOM_DURATION_SEC);
   const captionLinesRef = useRef<CaptionLine[] | null>(null);
   const [openStep, setOpenStep] = useState<1 | 2 | 3 | 4>(1);
   const [startSec, setStartSec] = useState(0);
@@ -172,6 +180,8 @@ export function ClipEditor() {
   const [manualImpacts, setManualImpacts] = useState<ManualImpact[]>([]);
   const [pendingEffectType, setPendingEffectType] = useState<EffectType>("both");
   const [addImpactWarning, setAddImpactWarning] = useState<string | null>(null);
+  const [flashDurationSec, setFlashDurationSec] = useState(DEFAULT_FLASH_DURATION_SEC);
+  const [zoomDurationSec, setZoomDurationSec] = useState(DEFAULT_ZOOM_DURATION_SEC);
   const [framingPan, setFramingPan] = useState(0);
   const [nativeSize, setNativeSize] = useState<{ w: number; h: number } | null>(
     null,
@@ -187,6 +197,8 @@ export function ClipEditor() {
     setImpactState({ status: "idle" });
     setManualImpacts([]);
     setAddImpactWarning(null);
+    setFlashDurationSec(DEFAULT_FLASH_DURATION_SEC);
+    setZoomDurationSec(DEFAULT_ZOOM_DURATION_SEC);
     setFramingPan(0);
     setNativeSize(null);
     if (zoomLayerRef.current) zoomLayerRef.current.style.transform = "scale(1)";
@@ -208,11 +220,11 @@ export function ClipEditor() {
   // recreated every time an effect/caption is added or edited.
   const updateOverlay = (t: number) => {
     if (zoomLayerRef.current) {
-      zoomLayerRef.current.style.transform = `scale(${previewZoomFactor(t, zoomTimesRef.current)})`;
+      zoomLayerRef.current.style.transform = `scale(${previewZoomFactor(t, zoomTimesRef.current, zoomDurationRef.current)})`;
     }
     if (flashOverlayRef.current) {
       flashOverlayRef.current.style.opacity = String(
-        previewFlashOpacity(t, flashTimesRef.current),
+        previewFlashOpacity(t, flashTimesRef.current, flashDurationRef.current),
       );
     }
     if (captionOverlayRef.current) {
@@ -377,6 +389,8 @@ export function ClipEditor() {
   // depend on (and re-subscribe over) values that change on every edit.
   flashTimesRef.current = flashTimesAbsolute;
   zoomTimesRef.current = zoomTimesAbsolute;
+  flashDurationRef.current = flashDurationSec;
+  zoomDurationRef.current = zoomDurationSec;
   captionLinesRef.current = captionLines;
 
   const addManualImpactAtPlayhead = () => {
@@ -460,6 +474,8 @@ export function ClipEditor() {
       captionsSrtPath,
       flashSeconds: flashSeconds.length > 0 ? flashSeconds : undefined,
       zoomSeconds: zoomSeconds.length > 0 ? zoomSeconds : undefined,
+      flashDurationSec,
+      zoomDurationSec,
       framingPan,
     });
     if (result.ok) {
@@ -736,6 +752,26 @@ export function ClipEditor() {
             </div>
             {openStep === 3 && (
               <div className="clip-editor__step-body">
+                <div className="clip-editor__duration-sliders">
+                  <TuningSlider
+                    label="Flash duration"
+                    value={flashDurationSec}
+                    min={0.1}
+                    max={1.5}
+                    step={0.05}
+                    format={(v) => `${v.toFixed(2)}s`}
+                    onCommit={setFlashDurationSec}
+                  />
+                  <TuningSlider
+                    label="Zoom duration"
+                    value={zoomDurationSec}
+                    min={0.2}
+                    max={2}
+                    step={0.1}
+                    format={(v) => `${v.toFixed(1)}s`}
+                    onCommit={setZoomDurationSec}
+                  />
+                </div>
                 <button
                   className="clip-editor__transcribe"
                   disabled={impactState.status === "running"}
@@ -825,17 +861,20 @@ export function ClipEditor() {
                   </div>
                 )}
                 <p className="clip-editor__note">
-                  Auto-detect combines loud audio peaks with excited
-                  language in the transcript ("let's go", laughing,
-                  swearing) when one exists, so a loud but unremarkable
-                  noise doesn't win purely on volume, and a quiet reaction
-                  can still surface. Transcribe first (step 2) for the best
-                  results - it still works without one, just audio-only.
-                  Pick a type above, then play or scrub to the spot you want
-                  and add it there - or click a dot on the timeline to jump
-                  back to a point you've already placed. The preview shows
-                  timing and intensity live, though it zooms the full source
-                  frame rather than the cropped 9:16 output.
+                  Both effects fade in and back out rather than cutting hard
+                  - the durations above set how long that takes, for every
+                  flash/zoom in this render. Auto-detect combines loud audio
+                  peaks with excited language in the transcript ("let's go",
+                  laughing, swearing) when one exists, so a loud but
+                  unremarkable noise doesn't win purely on volume, and a
+                  quiet reaction can still surface. Transcribe first (step
+                  2) for the best results - it still works without one,
+                  just audio-only. Pick a type above, then play or scrub to
+                  the spot you want and add it there - or click a dot on
+                  the timeline to jump back to a point you've already
+                  placed. The preview shows timing and intensity live,
+                  though it zooms the full source frame rather than the
+                  cropped 9:16 output.
                 </p>
               </div>
             )}

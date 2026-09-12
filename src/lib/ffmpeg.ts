@@ -34,6 +34,10 @@ export interface RenderOptions {
   /** Timestamps (seconds, relative to the trim start) to punch a zoom-in
    * at. Independent of flashSeconds. */
   zoomSeconds?: number[];
+  /** Total duration (seconds) each flash fades in and back out over. */
+  flashDurationSec?: number;
+  /** Total duration (seconds) each zoom punch eases in and back out over. */
+  zoomDurationSec?: number;
   /** Horizontal crop position, -1 (left edge) to 1 (right edge), 0 =
    * centered. Fixed for the whole render - see buildCropFilter. */
   framingPan?: number;
@@ -88,14 +92,14 @@ export async function renderVertical(
   const duration = Math.max(0.1, opts.endSeconds - opts.startSeconds);
 
   const stages = [buildCropFilter(opts.framingPan ?? 0)];
-  const zoomFilter = buildZoomPunchFilter(opts.zoomSeconds ?? []);
+  const zoomFilter = buildZoomPunchFilter(opts.zoomSeconds ?? [], opts.zoomDurationSec);
   if (zoomFilter) stages.push(zoomFilter);
   if (opts.captionsSrtPath) {
     stages.push(
       `subtitles='${escapeForSubtitlesFilter(opts.captionsSrtPath)}':force_style='${CAPTION_STYLE}'`,
     );
   }
-  const flashFilter = buildFlashFilter(opts.flashSeconds ?? []);
+  const flashFilter = buildFlashFilter(opts.flashSeconds ?? [], opts.flashDurationSec);
   if (flashFilter) stages.push(flashFilter);
   const videoFilter = stages.join(",");
   const args = [

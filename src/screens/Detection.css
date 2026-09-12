@@ -80,27 +80,6 @@
   gap: 14px;
 }
 
-.tuning-slider__row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 12px;
-  margin-bottom: 5px;
-}
-
-.tuning-slider__label {
-  color: var(--text-secondary-dim);
-}
-
-.tuning-slider__value {
-  font-family: var(--font-mono);
-  color: var(--text-dim);
-}
-
-.tuning-slider__input {
-  width: 100%;
-  accent-color: var(--accent);
-}
-
 .detection-screen__signals {
   display: flex;
   gap: 18px;
