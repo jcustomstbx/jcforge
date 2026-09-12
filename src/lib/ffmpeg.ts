@@ -25,7 +25,9 @@ export interface RenderOptions {
   outputPath: string;
   startSeconds: number;
   endSeconds: number;
-  /** Absolute path to an SRT file, already time-shifted to the trim range. */
+  /** Absolute path to an SRT or ASS subtitle file, already time-shifted to
+   * the trim range. ASS is needed for per-line styling (e.g. AI-suggested
+   * emphasis) that a plain SRT + uniform force_style can't express. */
   captionsSrtPath?: string;
   /** Timestamps (seconds, relative to the trim start) to flash to white
    * at. Independent of zoomSeconds so each effect type can be placed on

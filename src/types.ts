@@ -5,4 +5,5 @@ export type ScreenId =
   | "library"
   | "editor"
   | "detection"
-  | "recording";
+  | "recording"
+  | "ai-edit";

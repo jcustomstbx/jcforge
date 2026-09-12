@@ -6,6 +6,7 @@ import {
   PanelRight,
   Plug,
   Scissors,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { useClips } from "../lib/clips";
@@ -46,6 +47,7 @@ export function NavRail({ active, onNavigate }: NavRailProps) {
           badge: clips.length > 0 ? String(clips.length) : undefined,
         },
         { id: "editor", label: "Clip editor", icon: Scissors },
+        { id: "ai-edit", label: "AI edit", icon: Sparkles },
       ],
     },
     {

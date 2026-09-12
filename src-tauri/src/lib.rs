@@ -8,6 +8,9 @@ use mic_capture::{start_mic_capture, stop_mic_capture};
 mod license;
 use license::validate_license_key;
 
+mod gemini;
+use gemini::analyze_video_with_gemini;
+
 #[tauri::command]
 fn get_file_size(path: String) -> Result<u64, String> {
     std::fs::metadata(&path)
@@ -146,6 +149,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:jcforge.db", migrations)
@@ -178,7 +182,8 @@ pub fn run() {
             find_newest_file_since,
             start_mic_capture,
             stop_mic_capture,
-            validate_license_key
+            validate_license_key,
+            analyze_video_with_gemini
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

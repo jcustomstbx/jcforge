@@ -19,6 +19,7 @@
     "sql:allow-execute",
     "sql:allow-select",
     "sql:allow-close",
+    "dialog:allow-open",
     {
       "identifier": "shell:allow-execute",
       "allow": [

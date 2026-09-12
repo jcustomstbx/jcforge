@@ -17,6 +17,7 @@ import { ClipLibrary } from "./screens/ClipLibrary";
 import { ClipEditor } from "./screens/ClipEditor";
 import { Detection } from "./screens/Detection";
 import { Recording } from "./screens/Recording";
+import { AiEdit } from "./screens/AiEdit";
 import type { ScreenId } from "./types";
 import "./App.css";
 
@@ -28,6 +29,7 @@ const SCREENS: Record<ScreenId, ComponentType> = {
   editor: ClipEditor,
   detection: Detection,
   recording: Recording,
+  "ai-edit": AiEdit,
 };
 
 // Mounts whichever recording backend is selected in settings, defaulting to

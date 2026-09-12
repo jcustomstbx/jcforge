@@ -17,6 +17,7 @@ const DETECTION_COOLDOWN_MS_KEY = "detection_cooldown_ms";
 const DETECTION_WEIGHTS_KEY = "detection_weights";
 const LICENSE_KEY_KEY = "license_key";
 const AUTO_APPROVE_DETECTIONS_KEY = "auto_approve_detections";
+const GEMINI_API_KEY_KEY = "gemini_api_key";
 
 export type RecordingBackendId = "obs" | "streamlabs";
 
@@ -62,6 +63,9 @@ interface SettingsState {
    * Keep/Skip prompt. false (default) = the existing behaviour: capture,
    * then wait for a Keep/Skip decision in the dock. */
   autoApproveDetections: boolean;
+  /** User's own Gemini API key for the embedded AI-editing feature - brings
+   * their own key/billing, JCForge never ships a shared one. */
+  geminiApiKey: string | null;
   loading: boolean;
   setTwitchChannel: (channel: string) => Promise<void>;
   setRecordingBackend: (backend: RecordingBackendId) => Promise<void>;
@@ -72,6 +76,7 @@ interface SettingsState {
   setDetectionWeights: (weights: DetectionWeights) => Promise<void>;
   setLicenseKey: (key: string) => Promise<void>;
   setAutoApproveDetections: (auto: boolean) => Promise<void>;
+  setGeminiApiKey: (key: string) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -99,6 +104,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
   const [licenseKey, setLicenseKeyState] = useState<string | null>(null);
   const [autoApproveDetections, setAutoApproveDetectionsState] = useState(false);
+  const [geminiApiKey, setGeminiApiKeyState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -112,6 +118,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       getSetting(DETECTION_WEIGHTS_KEY),
       getSetting(LICENSE_KEY_KEY),
       getSetting(AUTO_APPROVE_DETECTIONS_KEY),
+      getSetting(GEMINI_API_KEY_KEY),
     ])
       .then(
         ([
@@ -124,6 +131,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           weights,
           license,
           autoApprove,
+          geminiKey,
         ]) => {
           setTwitchChannelState(channel);
           if (backend === "obs" || backend === "streamlabs") {
@@ -136,6 +144,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           setDetectionWeightsState(parseWeights(weights));
           setLicenseKeyState(license);
           setAutoApproveDetectionsState(autoApprove === "true");
+          setGeminiApiKeyState(geminiKey);
         },
       )
       .finally(() => setLoading(false));
@@ -193,6 +202,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setAutoApproveDetectionsState(auto);
   }, []);
 
+  const setGeminiApiKey = useCallback(async (key: string) => {
+    const trimmed = key.trim();
+    await setSetting(GEMINI_API_KEY_KEY, trimmed);
+    setGeminiApiKeyState(trimmed);
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -205,6 +220,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         detectionWeights,
         licenseKey,
         autoApproveDetections,
+        geminiApiKey,
         loading,
         setTwitchChannel,
         setRecordingBackend,
@@ -215,6 +231,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setDetectionWeights,
         setLicenseKey,
         setAutoApproveDetections,
+        setGeminiApiKey,
       }}
     >
       {children}

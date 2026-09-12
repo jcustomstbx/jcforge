@@ -7,6 +7,11 @@ export interface CaptionLine {
   start: number;
   end: number;
   text: string;
+  /** "high" renders this line larger, bold, and colour-highlighted rather
+   * than identically to every other line - lets an AI suggestion (or a
+   * future manual toggle) call out the one phrase per moment that matters,
+   * per the "don't caption every word with the same emphasis" principle. */
+  emphasis?: "normal" | "high";
 }
 
 function parseSrtTime(t: string): number {
@@ -63,6 +68,60 @@ export function linesToSrt(lines: CaptionLine[]): string {
         `${i + 1}\n${formatSrtTime(l.start)} --> ${formatSrtTime(l.end)}\n${l.text}\n`,
     )
     .join("\n");
+}
+
+function formatAssTime(t: number): string {
+  const clamped = Math.max(0, t);
+  const centis = Math.round((clamped % 1) * 100);
+  const total = Math.floor(clamped);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  return `${h}:${pad(m)}:${pad(s)}.${pad(centis)}`;
+}
+
+// ASS dialogue text uses "\N" for a line break and treats a literal
+// backslash/brace as the start of an override tag - escape both so caption
+// text can't accidentally inject one.
+function escapeAssText(text: string): string {
+  return text.replace(/\\/g, "\\\\").replace(/\{/g, "\\{").replace(/\}/g, "\\}");
+}
+
+/** A self-contained .ass file (its own [V4+ Styles] Default entry, though
+ * ffmpeg's `force_style` is expected to overwrite most of it at render
+ * time - see buildCaptionStyle in ffmpeg.ts) with inline per-line override
+ * codes for "high" emphasis lines. Plain SRT has no way to size/colour
+ * individual lines differently since force_style applies one style to the
+ * whole file - ASS's inline `{\...}` tags are the only way to do that. */
+export function linesToAss(lines: CaptionLine[], baseFontSize: number): string {
+  const emphasisFontSize = Math.round(baseFontSize * 1.6);
+  const header = [
+    "[Script Info]",
+    "ScriptType: v4.00+",
+    "PlayResX: 1080",
+    "PlayResY: 1920",
+    "",
+    "[V4+ Styles]",
+    "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+    `Style: Default,Arial,${baseFontSize},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,90,1`,
+    "",
+    "[Events]",
+    "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+  ].join("\n");
+
+  const events = lines
+    .map((l) => {
+      const override =
+        l.emphasis === "high"
+          ? `{\\b1\\fs${emphasisFontSize}\\c&H00FFFF&}`
+          : "";
+      const text = override + escapeAssText(l.text).replace(/\r?\n/g, "\\N");
+      return `Dialogue: 0,${formatAssTime(l.start)},${formatAssTime(l.end)},Default,,0,0,0,,${text}`;
+    })
+    .join("\n");
+
+  return `${header}\n${events}\n`;
 }
 
 /** Shift captions so `rangeStart` becomes 0, keep only lines overlapping

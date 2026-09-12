@@ -29,6 +29,9 @@ cpal = "0.18.2"
 hmac = "0.13.0"
 sha2 = "0.11.0"
 hex = "0.4.3"
+reqwest = { version = "0.13.5", features = ["json", "stream"] }
+tokio = { version = "1.53.1", features = ["fs"] }
+tauri-plugin-dialog = "2.7.3"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
