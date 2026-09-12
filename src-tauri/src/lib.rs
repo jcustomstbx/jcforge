@@ -5,6 +5,9 @@ use tauri_plugin_sql::{Migration, MigrationKind};
 mod mic_capture;
 use mic_capture::{start_mic_capture, stop_mic_capture};
 
+mod license;
+use license::validate_license_key;
+
 #[tauri::command]
 fn get_file_size(path: String) -> Result<u64, String> {
     std::fs::metadata(&path)
@@ -162,7 +165,8 @@ pub fn run() {
             write_text_file,
             find_newest_file_since,
             start_mic_capture,
-            stop_mic_capture
+            stop_mic_capture,
+            validate_license_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

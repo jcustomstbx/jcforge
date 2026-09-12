@@ -15,6 +15,7 @@ const STREAMLABS_REPLAY_FOLDER_KEY = "streamlabs_replay_folder";
 const DETECTION_THRESHOLD_KEY = "detection_threshold";
 const DETECTION_COOLDOWN_MS_KEY = "detection_cooldown_ms";
 const DETECTION_WEIGHTS_KEY = "detection_weights";
+const LICENSE_KEY_KEY = "license_key";
 
 export type RecordingBackendId = "obs" | "streamlabs";
 
@@ -55,6 +56,7 @@ interface SettingsState {
   detectionThreshold: number;
   detectionCooldownMs: number;
   detectionWeights: DetectionWeights;
+  licenseKey: string | null;
   loading: boolean;
   setTwitchChannel: (channel: string) => Promise<void>;
   setRecordingBackend: (backend: RecordingBackendId) => Promise<void>;
@@ -63,6 +65,7 @@ interface SettingsState {
   setDetectionThreshold: (threshold: number) => Promise<void>;
   setDetectionCooldownMs: (cooldownMs: number) => Promise<void>;
   setDetectionWeights: (weights: DetectionWeights) => Promise<void>;
+  setLicenseKey: (key: string) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -88,6 +91,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [detectionWeights, setDetectionWeightsState] = useState<DetectionWeights>(
     DEFAULT_DETECTION_WEIGHTS,
   );
+  const [licenseKey, setLicenseKeyState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -99,18 +103,22 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       getSetting(DETECTION_THRESHOLD_KEY),
       getSetting(DETECTION_COOLDOWN_MS_KEY),
       getSetting(DETECTION_WEIGHTS_KEY),
+      getSetting(LICENSE_KEY_KEY),
     ])
-      .then(([channel, backend, token, folder, threshold, cooldown, weights]) => {
-        setTwitchChannelState(channel);
-        if (backend === "obs" || backend === "streamlabs") {
-          setRecordingBackendState(backend);
-        }
-        setStreamlabsTokenState(token);
-        setStreamlabsReplayFolderState(folder);
-        if (threshold) setDetectionThresholdState(Number(threshold));
-        if (cooldown) setDetectionCooldownMsState(Number(cooldown));
-        setDetectionWeightsState(parseWeights(weights));
-      })
+      .then(
+        ([channel, backend, token, folder, threshold, cooldown, weights, license]) => {
+          setTwitchChannelState(channel);
+          if (backend === "obs" || backend === "streamlabs") {
+            setRecordingBackendState(backend);
+          }
+          setStreamlabsTokenState(token);
+          setStreamlabsReplayFolderState(folder);
+          if (threshold) setDetectionThresholdState(Number(threshold));
+          if (cooldown) setDetectionCooldownMsState(Number(cooldown));
+          setDetectionWeightsState(parseWeights(weights));
+          setLicenseKeyState(license);
+        },
+      )
       .finally(() => setLoading(false));
   }, []);
 
@@ -155,6 +163,12 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setDetectionWeightsState(weights);
   }, []);
 
+  const setLicenseKey = useCallback(async (key: string) => {
+    const trimmed = key.trim();
+    await setSetting(LICENSE_KEY_KEY, trimmed);
+    setLicenseKeyState(trimmed);
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -165,6 +179,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         detectionThreshold,
         detectionCooldownMs,
         detectionWeights,
+        licenseKey,
         loading,
         setTwitchChannel,
         setRecordingBackend,
@@ -173,6 +188,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setDetectionThreshold,
         setDetectionCooldownMs,
         setDetectionWeights,
+        setLicenseKey,
       }}
     >
       {children}

@@ -7,6 +7,7 @@ import { useCpalMicCapture } from "./lib/micCapture";
 import { ClipsProvider } from "./lib/clips";
 import { CaptureProvider } from "./lib/capture";
 import { SettingsProvider, useSettings } from "./lib/settingsContext";
+import { LicenseProvider } from "./lib/license";
 import { DetectionProvider } from "./lib/detection";
 import { NavigationProvider } from "./lib/navigation";
 import { LiveSession } from "./screens/LiveSession";
@@ -51,25 +52,27 @@ function App() {
 
   return (
     <SettingsProvider>
-      <BackendRouter>
-        <ClipsProvider>
-          <CaptureProvider>
-            <DetectionProvider>
-              <NavigationProvider navigate={setScreen}>
-                <div className="app-shell">
-                  <TitleBar />
-                  <div className="app-shell__body">
-                    <NavRail active={screen} onNavigate={setScreen} />
-                    <main className="app-shell__content">
-                      <Screen />
-                    </main>
+      <LicenseProvider>
+        <BackendRouter>
+          <ClipsProvider>
+            <CaptureProvider>
+              <DetectionProvider>
+                <NavigationProvider navigate={setScreen}>
+                  <div className="app-shell">
+                    <TitleBar />
+                    <div className="app-shell__body">
+                      <NavRail active={screen} onNavigate={setScreen} />
+                      <main className="app-shell__content">
+                        <Screen />
+                      </main>
+                    </div>
                   </div>
-                </div>
-              </NavigationProvider>
-            </DetectionProvider>
-          </CaptureProvider>
-        </ClipsProvider>
-      </BackendRouter>
+                </NavigationProvider>
+              </DetectionProvider>
+            </CaptureProvider>
+          </ClipsProvider>
+        </BackendRouter>
+      </LicenseProvider>
     </SettingsProvider>
   );
 }

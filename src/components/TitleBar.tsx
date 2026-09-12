@@ -4,8 +4,17 @@ import { useRef, useState } from "react";
 import { useObs } from "../lib/obs";
 import { useBackend } from "../lib/backend";
 import { useSettings } from "../lib/settingsContext";
+import { useLicense } from "../lib/license";
 import logo from "../assets/logo.png";
 import "./TitleBar.css";
+
+function formatTrialRemaining(ms: number): string {
+  const totalMinutes = Math.ceil(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m left`;
+  return `${minutes}m left`;
+}
 
 const appWindow = getCurrentWindow();
 
@@ -65,6 +74,7 @@ function ObsRetryPopover({ show, onClose }: { show: boolean; onClose: () => void
 export function TitleBar() {
   const backend = useBackend();
   const settings = useSettings();
+  const license = useLicense();
   const isObs = settings.recordingBackend !== "streamlabs";
   const backendLabel = isObs ? "OBS" : "Streamlabs";
   const [showPasswordField, setShowPasswordField] = useState(false);
@@ -96,6 +106,13 @@ export function TitleBar() {
         <span className="title-bar__name">JCForge</span>
       </div>
       <span className="title-bar__meta">{metaText}</span>
+      <span className="title-bar__license">
+        {license.isLicensed
+          ? "LICENSED"
+          : license.trialMsRemaining !== null
+            ? `TRIAL · ${formatTrialRemaining(license.trialMsRemaining)}`
+            : null}
+      </span>
       <div className="title-bar__spacer" />
       <div className="title-bar__status-wrap">
         <div
