@@ -2,6 +2,12 @@ import { useEffect, useRef } from "react";
 import { formatTime } from "../lib/format";
 import "./TrimBar.css";
 
+export interface TrimBarMarker {
+  time: number;
+  variant: "flash" | "zoom" | "both";
+  onClick?: () => void;
+}
+
 interface TrimBarProps {
   duration: number;
   start: number;
@@ -10,6 +16,7 @@ interface TrimBarProps {
   onChangeStart: (t: number) => void;
   onChangeEnd: (t: number) => void;
   onSeek: (t: number) => void;
+  markers?: TrimBarMarker[];
 }
 
 export function TrimBar({
@@ -20,6 +27,7 @@ export function TrimBar({
   onChangeStart,
   onChangeEnd,
   onSeek,
+  markers,
 }: TrimBarProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<"start" | "end" | null>(null);
@@ -90,6 +98,18 @@ export function TrimBar({
             draggingRef.current = "end";
           }}
         />
+        {markers?.map((m, i) => (
+          <div
+            key={i}
+            className={`trim-bar__marker trim-bar__marker--${m.variant}`}
+            style={{ left: `${pct(m.time)}%` }}
+            title={`${m.variant} · ${formatTime(m.time)}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              m.onClick?.();
+            }}
+          />
+        ))}
       </div>
       <span className="trim-bar__time">{formatTime(duration)}</span>
     </div>

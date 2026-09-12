@@ -15,7 +15,7 @@ import {
 import { detectImpactMoments } from "../lib/impactDetection";
 import { previewFlashOpacity, previewZoomFactor } from "../lib/effects";
 import { formatTime } from "../lib/format";
-import { TrimBar } from "../components/TrimBar";
+import { TrimBar, type TrimBarMarker } from "../components/TrimBar";
 import { FramingPreview } from "../components/FramingPreview";
 import "./ClipEditor.css";
 
@@ -41,6 +41,24 @@ function deriveOutputPath(sourcePath: string): string {
 const IMPACT_DEDUPE_SEC = 0.3;
 const NEW_CAPTION_DURATION_SEC = 2.5;
 
+type EffectType = "flash" | "zoom" | "both";
+
+const EFFECT_TYPE_LABEL: Record<EffectType, string> = {
+  flash: "Flash",
+  zoom: "Zoom",
+  both: "Flash + zoom",
+};
+
+interface ManualImpact {
+  time: number;
+  type: EffectType;
+}
+
+interface CombinedImpact {
+  time: number;
+  type: EffectType;
+}
+
 type RenderState =
   | { status: "idle" }
   | { status: "rendering" }
@@ -58,6 +76,12 @@ type ImpactState =
   | { status: "running" }
   | { status: "done"; impacts: number[] }
   | { status: "error"; message: string };
+
+function dedupeByTime(impacts: CombinedImpact[]): CombinedImpact[] {
+  return [...impacts]
+    .sort((a, b) => a.time - b.time)
+    .filter((p, i, arr) => i === 0 || p.time - arr[i - 1].time >= IMPACT_DEDUPE_SEC);
+}
 
 export function ClipEditor() {
   const nav = useNavigation();
@@ -85,7 +109,8 @@ export function ClipEditor() {
   // relative to the trim window, these don't need invalidating when the
   // trim changes, just filtering to whatever's still inside it at render
   // time.
-  const [manualImpacts, setManualImpacts] = useState<number[]>([]);
+  const [manualImpacts, setManualImpacts] = useState<ManualImpact[]>([]);
+  const [pendingEffectType, setPendingEffectType] = useState<EffectType>("both");
   const [framingPan, setFramingPan] = useState(0);
   const [nativeSize, setNativeSize] = useState<{ w: number; h: number } | null>(
     null,
@@ -221,30 +246,49 @@ export function ClipEditor() {
     }
   };
 
-  const autoImpactsAbsolute =
+  // Auto-detected points are always "both" (flash+zoom) - that's the
+  // existing detection behaviour; only manually-added points can pick a
+  // single effect type.
+  const autoImpacts: CombinedImpact[] =
     impactState.status === "done"
-      ? impactState.impacts.map((t) => t + startSec)
+      ? impactState.impacts.map((t) => ({ time: t + startSec, type: "both" as const }))
       : [];
 
-  // What will actually end up in the render (subject to the trim range and
-  // the auto-detect toggle) - shared by the live preview overlay and the
-  // Effects/Export step summaries so they can't disagree with each other.
-  const previewImpactsAbsolute = [
-    ...(applyEffects ? autoImpactsAbsolute : []),
+  // All placed effect points regardless of the current trim window - used
+  // for the timeline markers, so moving the trim handles doesn't make a
+  // point you placed seem to vanish.
+  const allImpacts: CombinedImpact[] = [
+    ...(applyEffects ? autoImpacts : []),
     ...manualImpacts,
-  ].filter((t) => t >= startSec && t <= endSec);
+  ];
+
+  // What will actually end up in the render (subject to the trim range) -
+  // shared by the live preview overlay and the Effects/Export summaries so
+  // they can't disagree with each other.
+  const impactsInRange = dedupeByTime(
+    allImpacts.filter((p) => p.time >= startSec && p.time <= endSec),
+  );
+  const flashTimesAbsolute = impactsInRange
+    .filter((p) => p.type === "flash" || p.type === "both")
+    .map((p) => p.time);
+  const zoomTimesAbsolute = impactsInRange
+    .filter((p) => p.type === "zoom" || p.type === "both")
+    .map((p) => p.time);
+  const effectiveEffectCount = impactsInRange.length;
 
   const addManualImpactAtPlayhead = () => {
     const t = currentTime;
-    const tooClose = [...manualImpacts, ...autoImpactsAbsolute].some(
-      (existing) => Math.abs(existing - t) < IMPACT_DEDUPE_SEC,
+    const tooClose = allImpacts.some(
+      (existing) => Math.abs(existing.time - t) < IMPACT_DEDUPE_SEC,
     );
     if (tooClose) return;
-    setManualImpacts((m) => [...m, t].sort((a, b) => a - b));
+    setManualImpacts((m) =>
+      [...m, { time: t, type: pendingEffectType }].sort((a, b) => a.time - b.time),
+    );
   };
 
   const removeManualImpact = (t: number) => {
-    setManualImpacts((m) => m.filter((x) => x !== t));
+    setManualImpacts((m) => m.filter((x) => x.time !== t));
   };
 
   const updateCaptionText = (id: number, text: string) => {
@@ -296,12 +340,8 @@ export function ClipEditor() {
       }
     }
 
-    const merged = previewImpactsAbsolute
-      .map((t) => t - startSec)
-      .sort((a, b) => a - b);
-    const deduped = merged.filter(
-      (t, i) => i === 0 || t - merged[i - 1] >= IMPACT_DEDUPE_SEC,
-    );
+    const flashSeconds = flashTimesAbsolute.map((t) => t - startSec);
+    const zoomSeconds = zoomTimesAbsolute.map((t) => t - startSec);
 
     const result = await renderVertical({
       sourcePath: clip.path,
@@ -309,7 +349,8 @@ export function ClipEditor() {
       startSeconds: startSec,
       endSeconds: endSec,
       captionsSrtPath,
-      impactSeconds: deduped.length > 0 ? deduped : undefined,
+      flashSeconds: flashSeconds.length > 0 ? flashSeconds : undefined,
+      zoomSeconds: zoomSeconds.length > 0 ? zoomSeconds : undefined,
       framingPan,
     });
     if (result.ok) {
@@ -325,11 +366,6 @@ export function ClipEditor() {
       ? "Centered"
       : `${Math.round(Math.abs(framingPan) * 100)}% ${framingPan < 0 ? "left" : "right"}`;
 
-  const dedupedPreviewImpacts = [...previewImpactsAbsolute]
-    .sort((a, b) => a - b)
-    .filter((t, i, arr) => i === 0 || t - arr[i - 1] >= IMPACT_DEDUPE_SEC);
-  const effectiveEffectCount = dedupedPreviewImpacts.length;
-
   // Live preview overlays - a CSS approximation of what the render will
   // actually burn in, so you can judge caption/effect timing while
   // scrubbing instead of only finding out after a full ffmpeg pass.
@@ -337,8 +373,14 @@ export function ClipEditor() {
     captionLines?.find(
       (l) => currentTime >= l.start && currentTime < l.end,
     ) ?? null;
-  const zoomFactor = previewZoomFactor(currentTime, dedupedPreviewImpacts);
-  const flashOpacity = previewFlashOpacity(currentTime, dedupedPreviewImpacts);
+  const zoomFactor = previewZoomFactor(currentTime, zoomTimesAbsolute);
+  const flashOpacity = previewFlashOpacity(currentTime, flashTimesAbsolute);
+
+  const trimMarkers: TrimBarMarker[] = allImpacts.map((p) => ({
+    time: p.time,
+    variant: p.type,
+    onClick: () => seekTo(p.time),
+  }));
 
   return (
     <div className="clip-editor">
@@ -403,6 +445,7 @@ export function ClipEditor() {
               onChangeStart={setStartSec}
               onChangeEnd={setEndSec}
               onSeek={seekTo}
+              markers={trimMarkers}
             />
             <div className="clip-editor__trim-summary">
               <span>{formatTime(startSec)}</span>
@@ -506,7 +549,7 @@ export function ClipEditor() {
                     onClick={addCaptionAtPlayhead}
                     title="Add a caption line starting at the playhead"
                   >
-                    + Add line
+                    + Add at {formatTime(currentTime)}
                   </button>
                 </div>
                 {transcribe.status === "error" && (
@@ -612,26 +655,17 @@ export function ClipEditor() {
             </div>
             {openStep === 3 && (
               <div className="clip-editor__step-body">
-                <div className="clip-editor__button-row">
-                  <button
-                    className="clip-editor__transcribe"
-                    disabled={impactState.status === "running"}
-                    onClick={doDetectImpacts}
-                  >
-                    {impactState.status === "running"
-                      ? "Analyzing…"
-                      : impactState.status === "done"
-                        ? "Re-detect moments"
-                        : "Detect hype moments"}
-                  </button>
-                  <button
-                    className="clip-editor__add-button"
-                    onClick={addManualImpactAtPlayhead}
-                    title="Add a flash + zoom at the playhead"
-                  >
-                    + Add at playhead
-                  </button>
-                </div>
+                <button
+                  className="clip-editor__transcribe"
+                  disabled={impactState.status === "running"}
+                  onClick={doDetectImpacts}
+                >
+                  {impactState.status === "running"
+                    ? "Analyzing…"
+                    : impactState.status === "done"
+                      ? "Re-detect moments"
+                      : "Detect hype moments"}
+                </button>
                 {impactState.status === "error" && (
                   <p className="clip-editor__note clip-editor__note--error">
                     {impactState.message}
@@ -656,15 +690,45 @@ export function ClipEditor() {
                       {impactState.impacts.map((t) => formatTime(t)).join(", ")}
                     </label>
                   )}
+
+                <div className="clip-editor__effect-type-row">
+                  {(["flash", "zoom", "both"] as EffectType[]).map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className={
+                        "clip-editor__effect-type" +
+                        (pendingEffectType === type
+                          ? " clip-editor__effect-type--active"
+                          : "")
+                      }
+                      onClick={() => setPendingEffectType(type)}
+                    >
+                      {EFFECT_TYPE_LABEL[type]}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="clip-editor__add-button clip-editor__add-button--wide"
+                  onClick={addManualImpactAtPlayhead}
+                  title={`Add ${EFFECT_TYPE_LABEL[pendingEffectType]} at the playhead`}
+                >
+                  + Add {EFFECT_TYPE_LABEL[pendingEffectType].toLowerCase()} at{" "}
+                  {formatTime(currentTime)}
+                </button>
+
                 {manualImpacts.length > 0 && (
                   <div className="clip-editor__impact-list">
-                    {manualImpacts.map((t) => (
-                      <div key={t} className="clip-editor__impact-chip">
-                        <span>{formatTime(t - startSec)}</span>
+                    {manualImpacts.map((p) => (
+                      <div key={p.time} className="clip-editor__impact-chip">
+                        <span
+                          className={`clip-editor__impact-dot clip-editor__impact-dot--${p.type}`}
+                        />
+                        <span>{formatTime(p.time - startSec)}</span>
                         <button
                           className="clip-editor__caption-delete"
                           title="Remove"
-                          onClick={() => removeManualImpact(t)}
+                          onClick={() => removeManualImpact(p.time)}
                         >
                           ×
                         </button>
@@ -674,11 +738,12 @@ export function ClipEditor() {
                 )}
                 <p className="clip-editor__note">
                   Auto-detect finds the loudest moments in the clip's audio
-                  and punches a flash + zoom-in on each. Add at playhead
-                  drops one manually wherever you pause the preview - both
-                  can be used together. The preview above shows timing and
-                  intensity live, though it zooms the full source frame
-                  rather than the cropped 9:16 output.
+                  and always applies both effects. Pick a type above, then
+                  play or scrub to the spot you want and add it there - or
+                  click a dot on the timeline to jump back to a point you've
+                  already placed. The preview shows timing and intensity
+                  live, though it zooms the full source frame rather than
+                  the cropped 9:16 output.
                 </p>
               </div>
             )}
@@ -732,7 +797,7 @@ export function ClipEditor() {
                   <span>Effects</span>
                   <span className="clip-editor__row-value">
                     {effectiveEffectCount > 0
-                      ? `${effectiveEffectCount} flash + zoom`
+                      ? `${flashTimesAbsolute.length} flash · ${zoomTimesAbsolute.length} zoom`
                       : "none"}
                   </span>
                 </div>

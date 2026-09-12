@@ -27,9 +27,13 @@ export interface RenderOptions {
   endSeconds: number;
   /** Absolute path to an SRT file, already time-shifted to the trim range. */
   captionsSrtPath?: string;
-  /** Impact timestamps (seconds, relative to the trim start) to punch a
-   * flash + zoom into during render. */
-  impactSeconds?: number[];
+  /** Timestamps (seconds, relative to the trim start) to flash to white
+   * at. Independent of zoomSeconds so each effect type can be placed on
+   * its own. */
+  flashSeconds?: number[];
+  /** Timestamps (seconds, relative to the trim start) to punch a zoom-in
+   * at. Independent of flashSeconds. */
+  zoomSeconds?: number[];
   /** Horizontal crop position, -1 (left edge) to 1 (right edge), 0 =
    * centered. Fixed for the whole render - see buildCropFilter. */
   framingPan?: number;
@@ -84,14 +88,14 @@ export async function renderVertical(
   const duration = Math.max(0.1, opts.endSeconds - opts.startSeconds);
 
   const stages = [buildCropFilter(opts.framingPan ?? 0)];
-  const zoomFilter = buildZoomPunchFilter(opts.impactSeconds ?? []);
+  const zoomFilter = buildZoomPunchFilter(opts.zoomSeconds ?? []);
   if (zoomFilter) stages.push(zoomFilter);
   if (opts.captionsSrtPath) {
     stages.push(
       `subtitles='${escapeForSubtitlesFilter(opts.captionsSrtPath)}':force_style='${CAPTION_STYLE}'`,
     );
   }
-  const flashFilter = buildFlashFilter(opts.impactSeconds ?? []);
+  const flashFilter = buildFlashFilter(opts.flashSeconds ?? []);
   if (flashFilter) stages.push(flashFilter);
   const videoFilter = stages.join(",");
   const args = [

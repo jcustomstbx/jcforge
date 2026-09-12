@@ -54,3 +54,31 @@
 .trim-bar__handle:hover {
   background: var(--accent-hover);
 }
+
+.trim-bar__marker {
+  position: absolute;
+  bottom: 2px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  z-index: 1;
+}
+
+.trim-bar__marker:hover {
+  transform: scale(1.25);
+}
+
+.trim-bar__marker--flash {
+  background: #f5c451;
+}
+
+.trim-bar__marker--zoom {
+  background: #b48cf2;
+}
+
+.trim-bar__marker--both {
+  background: var(--accent);
+}
