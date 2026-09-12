@@ -60,6 +60,12 @@
   overflow: hidden;
 }
 
+.clip-editor__zoom-layer {
+  position: absolute;
+  inset: 0;
+  transform-origin: center center;
+}
+
 .clip-editor__video {
   display: block;
   width: 100%;
@@ -68,6 +74,33 @@
   border: 1px solid var(--border-control);
   box-sizing: border-box;
   object-fit: contain;
+}
+
+.clip-editor__flash-overlay {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  pointer-events: none;
+}
+
+.clip-editor__caption-overlay {
+  position: absolute;
+  left: 50%;
+  bottom: 15%;
+  transform: translateX(-50%);
+  max-width: 85%;
+  padding: 4px 10px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  text-align: center;
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000,
+    0 0 6px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
 }
 
 .clip-editor__trim {

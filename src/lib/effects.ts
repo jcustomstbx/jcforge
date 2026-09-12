@@ -52,3 +52,22 @@ export function buildZoomPunchFilter(impacts: number[]): string | null {
   const zoom = `(1+${ZOOM_AMPLITUDE}*(${bumpSum}))`;
   return `scale=w='1080*${zoom}':h='1920*${zoom}':eval=frame,crop=1080:1920`;
 }
+
+/** JS-side equivalents of the same math above, for the editor's live
+ * preview (a CSS transform, not an ffmpeg render) - kept in this file and
+ * built from the same constants so the preview can't silently drift from
+ * what actually gets rendered. */
+export function previewZoomFactor(t: number, impacts: number[]): number {
+  let bump = 0;
+  for (const impactT of impacts) {
+    const d = Math.abs(t - impactT);
+    if (d < ZOOM_WINDOW) bump += 0.5 * (1 + Math.cos((Math.PI * d) / ZOOM_WINDOW));
+  }
+  return 1 + ZOOM_AMPLITUDE * bump;
+}
+
+export function previewFlashOpacity(t: number, impacts: number[]): number {
+  return impacts.some((impactT) => Math.abs(t - impactT) <= FLASH_HALF_WINDOW)
+    ? 1
+    : 0;
+}

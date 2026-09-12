@@ -13,6 +13,7 @@ import {
   type CaptionLine,
 } from "../lib/captions";
 import { detectImpactMoments } from "../lib/impactDetection";
+import { previewFlashOpacity, previewZoomFactor } from "../lib/effects";
 import { formatTime } from "../lib/format";
 import { TrimBar } from "../components/TrimBar";
 import { FramingPreview } from "../components/FramingPreview";
@@ -125,6 +126,33 @@ export function ClipEditor() {
     return () => video.removeEventListener("timeupdate", onTimeUpdate);
   }, [startSec, endSec]);
 
+  // The caption/flash/zoom preview overlays are keyed off currentTime -
+  // native "timeupdate" events are too coarse (browser-throttled, often
+  // ~250ms) to make a 120ms flash window or the zoom's easing read smoothly
+  // during playback, so poll every frame while playing instead. Scrubbing
+  // (paused) is already covered by the timeupdate listener above, which
+  // still fires once per seek.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    let raf = 0;
+    const loop = () => {
+      setCurrentTime(video.currentTime);
+      raf = requestAnimationFrame(loop);
+    };
+    const onPlay = () => {
+      raf = requestAnimationFrame(loop);
+    };
+    const onPause = () => cancelAnimationFrame(raf);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
+    return () => {
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
+      cancelAnimationFrame(raf);
+    };
+  }, [clip?.id]);
+
   // Track the source's native pixel size so the framing preview's overlay
   // can be sized to exactly match the displayed video frame (see the
   // video-wrap's aspect-ratio below) - without that, the crop-box drag math
@@ -198,6 +226,14 @@ export function ClipEditor() {
       ? impactState.impacts.map((t) => t + startSec)
       : [];
 
+  // What will actually end up in the render (subject to the trim range and
+  // the auto-detect toggle) - shared by the live preview overlay and the
+  // Effects/Export step summaries so they can't disagree with each other.
+  const previewImpactsAbsolute = [
+    ...(applyEffects ? autoImpactsAbsolute : []),
+    ...manualImpacts,
+  ].filter((t) => t >= startSec && t <= endSec);
+
   const addManualImpactAtPlayhead = () => {
     const t = currentTime;
     const tooClose = [...manualImpacts, ...autoImpactsAbsolute].some(
@@ -260,12 +296,9 @@ export function ClipEditor() {
       }
     }
 
-    const autoRelative =
-      applyEffects && impactState.status === "done" ? impactState.impacts : [];
-    const manualRelative = manualImpacts
-      .filter((t) => t >= startSec && t <= endSec)
-      .map((t) => t - startSec);
-    const merged = [...autoRelative, ...manualRelative].sort((a, b) => a - b);
+    const merged = previewImpactsAbsolute
+      .map((t) => t - startSec)
+      .sort((a, b) => a - b);
     const deduped = merged.filter(
       (t, i) => i === 0 || t - merged[i - 1] >= IMPACT_DEDUPE_SEC,
     );
@@ -292,10 +325,20 @@ export function ClipEditor() {
       ? "Centered"
       : `${Math.round(Math.abs(framingPan) * 100)}% ${framingPan < 0 ? "left" : "right"}`;
 
-  const effectiveEffectCount = new Set([
-    ...(applyEffects && impactState.status === "done" ? impactState.impacts : []),
-    ...manualImpacts.filter((t) => t >= startSec && t <= endSec),
-  ]).size;
+  const dedupedPreviewImpacts = [...previewImpactsAbsolute]
+    .sort((a, b) => a - b)
+    .filter((t, i, arr) => i === 0 || t - arr[i - 1] >= IMPACT_DEDUPE_SEC);
+  const effectiveEffectCount = dedupedPreviewImpacts.length;
+
+  // Live preview overlays - a CSS approximation of what the render will
+  // actually burn in, so you can judge caption/effect timing while
+  // scrubbing instead of only finding out after a full ffmpeg pass.
+  const activeCaption =
+    captionLines?.find(
+      (l) => currentTime >= l.start && currentTime < l.end,
+    ) ?? null;
+  const zoomFactor = previewZoomFactor(currentTime, dedupedPreviewImpacts);
+  const flashOpacity = previewFlashOpacity(currentTime, dedupedPreviewImpacts);
 
   return (
     <div className="clip-editor">
@@ -319,13 +362,29 @@ export function ClipEditor() {
                 : undefined
             }
           >
-            {videoSrc && (
-              <video
-                ref={videoRef}
-                className="clip-editor__video"
-                src={videoSrc}
-                controls
+            <div
+              className="clip-editor__zoom-layer"
+              style={{ transform: `scale(${zoomFactor})` }}
+            >
+              {videoSrc && (
+                <video
+                  ref={videoRef}
+                  className="clip-editor__video"
+                  src={videoSrc}
+                  controls
+                />
+              )}
+            </div>
+            {flashOpacity > 0 && (
+              <div
+                className="clip-editor__flash-overlay"
+                style={{ opacity: flashOpacity }}
               />
+            )}
+            {activeCaption && activeCaption.text && (
+              <div className="clip-editor__caption-overlay">
+                {activeCaption.text}
+              </div>
             )}
             {openStep === 1 && (
               <FramingPreview
@@ -617,7 +676,9 @@ export function ClipEditor() {
                   Auto-detect finds the loudest moments in the clip's audio
                   and punches a flash + zoom-in on each. Add at playhead
                   drops one manually wherever you pause the preview - both
-                  can be used together.
+                  can be used together. The preview above shows timing and
+                  intensity live, though it zooms the full source frame
+                  rather than the cropped 9:16 output.
                 </p>
               </div>
             )}
