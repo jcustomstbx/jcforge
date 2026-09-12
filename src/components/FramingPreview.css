@@ -17,27 +17,27 @@
   bottom: 0;
   border: 2px solid var(--accent);
   box-sizing: border-box;
+  pointer-events: none;
+}
+
+/* Fixed size and vertical position (well above the video's native control
+ * bar) regardless of frame height - the actual drag target, kept separate
+ * from the full-height box above so dragging never fights play/pause or
+ * the scrub bar underneath it. */
+.framing-preview__handle {
+  position: absolute;
+  top: 35%;
+  width: 32px;
+  height: 32px;
+  margin-left: -16px;
+  margin-top: -16px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.9;
   cursor: ew-resize;
   pointer-events: auto;
 }
 
-.framing-preview__box::before {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--accent);
-  opacity: 0.85;
-}
-
-.framing-preview__box--fixed {
-  cursor: default;
-}
-
-.framing-preview__box--fixed::before {
-  display: none;
+.framing-preview__handle:hover {
+  opacity: 1;
 }

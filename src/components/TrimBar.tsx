@@ -98,9 +98,9 @@ export function TrimBar({
             draggingRef.current = "end";
           }}
         />
-        {markers?.map((m, i) => (
+        {markers?.map((m) => (
           <div
-            key={i}
+            key={m.time}
             className={`trim-bar__marker trim-bar__marker--${m.variant}`}
             style={{ left: `${pct(m.time)}%` }}
             title={`${m.variant} · ${formatTime(m.time)}`}

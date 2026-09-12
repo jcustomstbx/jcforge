@@ -98,7 +98,7 @@ export function CaptureProvider({ children }: { children: ReactNode }) {
         console.error("[capture] failed to record clip:", err);
         pushToast(
           "error",
-          "OBS saved the clip, but JCForge failed to record it — see console",
+          `${backendLabel} saved the clip, but JCForge failed to record it — see console`,
         );
         return null;
       }

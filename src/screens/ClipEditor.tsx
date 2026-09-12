@@ -83,6 +83,56 @@ function dedupeByTime(impacts: CombinedImpact[]): CombinedImpact[] {
     .filter((p, i, arr) => i === 0 || p.time - arr[i - 1].time >= IMPACT_DEDUPE_SEC);
 }
 
+/** A plain controlled `<input type="number">` re-renders with its
+ * `.toFixed(1)`-formatted value on every keystroke, which fights in-place
+ * editing (deleting a trailing digit gets immediately overwritten back by
+ * the reformatted value). Free-typing into local draft state and only
+ * parsing/clamping/committing on blur avoids that, and validates the value
+ * exactly once instead of on every partial keystroke. */
+function CaptionTimeInput({
+  value,
+  min,
+  max,
+  onCommit,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState(value.toFixed(1));
+
+  useEffect(() => {
+    setDraft(value.toFixed(1));
+  }, [value]);
+
+  const commit = () => {
+    const parsed = Number(draft);
+    // Guard against an inverted range (e.g. a sub-0.1s line, where
+    // end - 0.1 < 0) rather than clamping below min or above max.
+    const safeMax = Math.max(min, max);
+    const clamped = Number.isFinite(parsed)
+      ? Math.min(safeMax, Math.max(min, parsed))
+      : value;
+    onCommit(clamped);
+    setDraft(clamped.toFixed(1));
+  };
+
+  return (
+    <input
+      type="number"
+      step={0.1}
+      className="clip-editor__caption-time-input"
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+    />
+  );
+}
+
 export function ClipEditor() {
   const nav = useNavigation();
   const { clips } = useClips();
@@ -121,6 +171,7 @@ export function ClipEditor() {
   // time.
   const [manualImpacts, setManualImpacts] = useState<ManualImpact[]>([]);
   const [pendingEffectType, setPendingEffectType] = useState<EffectType>("both");
+  const [addImpactWarning, setAddImpactWarning] = useState<string | null>(null);
   const [framingPan, setFramingPan] = useState(0);
   const [nativeSize, setNativeSize] = useState<{ w: number; h: number } | null>(
     null,
@@ -135,6 +186,7 @@ export function ClipEditor() {
     setTranscribe({ status: "idle" });
     setImpactState({ status: "idle" });
     setManualImpacts([]);
+    setAddImpactWarning(null);
     setFramingPan(0);
     setNativeSize(null);
     if (zoomLayerRef.current) zoomLayerRef.current.style.transform = "scale(1)";
@@ -332,7 +384,13 @@ export function ClipEditor() {
     const tooClose = allImpacts.some(
       (existing) => Math.abs(existing.time - t) < IMPACT_DEDUPE_SEC,
     );
-    if (tooClose) return;
+    if (tooClose) {
+      setAddImpactWarning(
+        `Already an effect within ${IMPACT_DEDUPE_SEC}s of ${formatTime(t)} - move the playhead further away.`,
+      );
+      return;
+    }
+    setAddImpactWarning(null);
     setManualImpacts((m) =>
       [...m, { time: t, type: pendingEffectType }].sort((a, b) => a.time - b.time),
     );
@@ -617,33 +675,23 @@ export function ClipEditor() {
                           </button>
                         </div>
                         <div className="clip-editor__caption-row">
-                          <input
-                            type="number"
-                            step={0.1}
-                            className="clip-editor__caption-time-input"
-                            value={line.start.toFixed(1)}
-                            onChange={(e) =>
-                              updateCaptionTiming(
-                                line.id,
-                                "start",
-                                Number(e.target.value),
-                              )
+                          <CaptionTimeInput
+                            value={line.start}
+                            min={0}
+                            max={line.end - 0.1}
+                            onCommit={(v) =>
+                              updateCaptionTiming(line.id, "start", v)
                             }
                           />
                           <span className="clip-editor__caption-time-sep">
                             →
                           </span>
-                          <input
-                            type="number"
-                            step={0.1}
-                            className="clip-editor__caption-time-input"
-                            value={line.end.toFixed(1)}
-                            onChange={(e) =>
-                              updateCaptionTiming(
-                                line.id,
-                                "end",
-                                Number(e.target.value),
-                              )
+                          <CaptionTimeInput
+                            value={line.end}
+                            min={line.start + 0.1}
+                            max={clip.durationSeconds ?? line.start + 3600}
+                            onCommit={(v) =>
+                              updateCaptionTiming(line.id, "end", v)
                             }
                           />
                           <button
@@ -720,7 +768,9 @@ export function ClipEditor() {
                         onChange={(e) => setApplyEffects(e.target.checked)}
                       />
                       Auto-detected at{" "}
-                      {impactState.impacts.map((t) => formatTime(t)).join(", ")}
+                      {impactState.impacts
+                        .map((t) => formatTime(t + startSec))
+                        .join(", ")}
                     </label>
                   )}
 
@@ -749,6 +799,11 @@ export function ClipEditor() {
                   + Add {EFFECT_TYPE_LABEL[pendingEffectType].toLowerCase()} at{" "}
                   {formatTime(currentTime)}
                 </button>
+                {addImpactWarning && (
+                  <p className="clip-editor__note clip-editor__note--error">
+                    {addImpactWarning}
+                  </p>
+                )}
 
                 {manualImpacts.length > 0 && (
                   <div className="clip-editor__impact-list">
@@ -757,7 +812,7 @@ export function ClipEditor() {
                         <span
                           className={`clip-editor__impact-dot clip-editor__impact-dot--${p.type}`}
                         />
-                        <span>{formatTime(p.time - startSec)}</span>
+                        <span>{formatTime(p.time)}</span>
                         <button
                           className="clip-editor__caption-delete"
                           title="Remove"

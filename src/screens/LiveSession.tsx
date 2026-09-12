@@ -64,7 +64,9 @@ export function LiveSession() {
           caption={
             detection.chatConnected
               ? "connected to Twitch chat"
-              : "set a Twitch channel on Sources to enable"
+              : settings.twitchChannel
+                ? "reconnecting to Twitch chat…"
+                : "set a Twitch channel on Sources to enable"
           }
         />
         <SignalMeter

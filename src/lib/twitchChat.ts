@@ -2,14 +2,24 @@ export interface TwitchChatEvent {
   emoteCount: number;
 }
 
+const RECONNECT_DELAY_MS = 3000;
+
 /**
  * Anonymous, read-only connection to Twitch IRC over WebSocket. No auth
  * token needed - just a channel name - per Twitch's anonymous-read IRC
  * support.
+ *
+ * Twitch periodically resets long-lived anonymous IRC connections, and
+ * plain network blips happen too - without reconnecting, chat-based
+ * detection would silently go dark for the rest of a session after one
+ * drop. Reconnects automatically after any unexpected close; only a
+ * deliberate disconnect() call stops that.
  */
 export class TwitchChatConnection {
   private ws: WebSocket | null = null;
   private channel: string;
+  private stopped = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   onMessage: ((e: TwitchChatEvent) => void) | null = null;
   onStatusChange: ((connected: boolean) => void) | null = null;
 
@@ -18,6 +28,7 @@ export class TwitchChatConnection {
   }
 
   connect(): void {
+    this.stopped = false;
     const ws = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
     this.ws = ws;
 
@@ -46,10 +57,17 @@ export class TwitchChatConnection {
 
     ws.onclose = () => {
       this.onStatusChange?.(false);
+      if (this.stopped) return;
+      this.reconnectTimer = setTimeout(() => this.connect(), RECONNECT_DELAY_MS);
     };
   }
 
   disconnect(): void {
+    this.stopped = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
     this.ws = null;
   }
