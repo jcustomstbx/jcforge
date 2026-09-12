@@ -47,9 +47,11 @@ export function Detection() {
     detectionThreshold,
     detectionCooldownMs,
     detectionWeights,
+    autoApproveDetections,
     setDetectionThreshold,
     setDetectionCooldownMs,
     setDetectionWeights,
+    setAutoApproveDetections,
   } = settings;
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -113,6 +115,39 @@ export function Detection() {
           effect live, then backtest the settings against a recorded session
           before trusting them on stream.
         </p>
+      </div>
+
+      <div className="detection-screen__card">
+        <div className="detection-screen__card-header">
+          <span className="detection-screen__card-title">Capture mode</span>
+        </div>
+        <div className="detection-screen__presets">
+          <button
+            type="button"
+            className={
+              "detection-screen__preset" +
+              (!autoApproveDetections ? " detection-screen__preset--active" : "")
+            }
+            onClick={() => setAutoApproveDetections(false)}
+          >
+            Ask me (dock Keep/Skip)
+          </button>
+          <button
+            type="button"
+            className={
+              "detection-screen__preset" +
+              (autoApproveDetections ? " detection-screen__preset--active" : "")
+            }
+            onClick={() => setAutoApproveDetections(true)}
+          >
+            Fully automatic
+          </button>
+        </div>
+        <div className="detection-screen__mono detection-screen__mono--dim">
+          {autoApproveDetections
+            ? "Every detected moment is captured and kept immediately - no dock prompt."
+            : "Every detected moment is captured, then waits in the dock for you to Keep or Skip it."}
+        </div>
       </div>
 
       <div className="detection-screen__card">

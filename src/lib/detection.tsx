@@ -21,6 +21,7 @@ import {
   DOCK_STATE_EVENT,
   type DockAction,
   type DockProposal,
+  type DockResolution,
 } from "./dockProtocol";
 
 const TICK_MS = 350; // ~3fps for motion sampling + chat rate recompute
@@ -63,8 +64,13 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   } = backend;
   const micLevel = useMicLevel();
   const { autoCapture } = capture;
-  const { twitchChannel, detectionThreshold, detectionCooldownMs, detectionWeights } =
-    settings;
+  const {
+    twitchChannel,
+    detectionThreshold,
+    detectionCooldownMs,
+    detectionWeights,
+    autoApproveDetections,
+  } = settings;
   const { clips: clipList, resolveClip } = clips;
 
   const [voiceScore, setVoiceScore] = useState(0);
@@ -84,6 +90,7 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
   const voiceScoreRef = useRef(0);
   const voiceWaveRef = useRef<number[]>([]);
   const proposalRef = useRef<DockProposal | null>(null);
+  const lastResolutionRef = useRef<DockResolution | null>(null);
   const sessionIdRef = useRef<number | null>(null);
 
   const chatTimestampsRef = useRef<number[]>([]);
@@ -97,6 +104,7 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
     if (!current) return;
     proposalRef.current = null;
     setProposal(null);
+    lastResolutionRef.current = { type: kept ? "kept" : "skipped", at: Date.now() };
     resolveClip(current.clipId, kept);
   };
 
@@ -249,9 +257,17 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
           `Moment detected (${comp.toFixed(2)})`,
         );
         if (clipId !== null) {
-          const next = { clipId, score: comp, at: now };
-          proposalRef.current = next;
-          setProposal(next);
+          if (autoApproveDetections) {
+            // Fully automatic mode: keep it immediately, no dock prompt.
+            lastResolutionRef.current = { type: "kept", at: Date.now() };
+            resolveClip(clipId, true).catch((err) =>
+              console.error("[detection] failed to auto-keep clip:", err),
+            );
+          } else {
+            const next = { clipId, score: comp, at: now };
+            proposalRef.current = next;
+            setProposal(next);
+          }
         }
       }
 
@@ -263,6 +279,7 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
         motionScore: motionN,
         voiceWave: voiceWaveRef.current,
         proposal: proposalRef.current,
+        lastResolution: lastResolutionRef.current,
         keptCount,
         skippedCount,
       });
@@ -280,6 +297,8 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
     detectionThreshold,
     detectionCooldownMs,
     detectionWeights,
+    autoApproveDetections,
+    resolveClip,
   ]);
 
   return (

@@ -16,6 +16,7 @@ const DETECTION_THRESHOLD_KEY = "detection_threshold";
 const DETECTION_COOLDOWN_MS_KEY = "detection_cooldown_ms";
 const DETECTION_WEIGHTS_KEY = "detection_weights";
 const LICENSE_KEY_KEY = "license_key";
+const AUTO_APPROVE_DETECTIONS_KEY = "auto_approve_detections";
 
 export type RecordingBackendId = "obs" | "streamlabs";
 
@@ -57,6 +58,10 @@ interface SettingsState {
   detectionCooldownMs: number;
   detectionWeights: DetectionWeights;
   licenseKey: string | null;
+  /** true = a detected moment is captured and kept immediately, no dock
+   * Keep/Skip prompt. false (default) = the existing behaviour: capture,
+   * then wait for a Keep/Skip decision in the dock. */
+  autoApproveDetections: boolean;
   loading: boolean;
   setTwitchChannel: (channel: string) => Promise<void>;
   setRecordingBackend: (backend: RecordingBackendId) => Promise<void>;
@@ -66,6 +71,7 @@ interface SettingsState {
   setDetectionCooldownMs: (cooldownMs: number) => Promise<void>;
   setDetectionWeights: (weights: DetectionWeights) => Promise<void>;
   setLicenseKey: (key: string) => Promise<void>;
+  setAutoApproveDetections: (auto: boolean) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -92,6 +98,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     DEFAULT_DETECTION_WEIGHTS,
   );
   const [licenseKey, setLicenseKeyState] = useState<string | null>(null);
+  const [autoApproveDetections, setAutoApproveDetectionsState] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -104,9 +111,20 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       getSetting(DETECTION_COOLDOWN_MS_KEY),
       getSetting(DETECTION_WEIGHTS_KEY),
       getSetting(LICENSE_KEY_KEY),
+      getSetting(AUTO_APPROVE_DETECTIONS_KEY),
     ])
       .then(
-        ([channel, backend, token, folder, threshold, cooldown, weights, license]) => {
+        ([
+          channel,
+          backend,
+          token,
+          folder,
+          threshold,
+          cooldown,
+          weights,
+          license,
+          autoApprove,
+        ]) => {
           setTwitchChannelState(channel);
           if (backend === "obs" || backend === "streamlabs") {
             setRecordingBackendState(backend);
@@ -117,6 +135,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           if (cooldown) setDetectionCooldownMsState(Number(cooldown));
           setDetectionWeightsState(parseWeights(weights));
           setLicenseKeyState(license);
+          setAutoApproveDetectionsState(autoApprove === "true");
         },
       )
       .finally(() => setLoading(false));
@@ -169,6 +188,11 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setLicenseKeyState(trimmed);
   }, []);
 
+  const setAutoApproveDetections = useCallback(async (auto: boolean) => {
+    await setSetting(AUTO_APPROVE_DETECTIONS_KEY, String(auto));
+    setAutoApproveDetectionsState(auto);
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -180,6 +204,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         detectionCooldownMs,
         detectionWeights,
         licenseKey,
+        autoApproveDetections,
         loading,
         setTwitchChannel,
         setRecordingBackend,
@@ -189,6 +214,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setDetectionCooldownMs,
         setDetectionWeights,
         setLicenseKey,
+        setAutoApproveDetections,
       }}
     >
       {children}
