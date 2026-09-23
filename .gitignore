@@ -24,6 +24,9 @@ src-tauri/models/*.bin
 # Redundant copy of design_handoff_jcforge, kept locally only
 /AI-powered stream clip creator.zip
 
+# Packaged test builds sent to testers - large, rebuildable, not source
+/JCForge_Test_Build.zip
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

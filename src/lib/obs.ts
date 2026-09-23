@@ -39,10 +39,16 @@ export interface ObsState {
   disconnect: () => void;
   triggerManualCapture: () => Promise<string | null>;
   captureScreenshot: () => Promise<string | null>;
+  getRecordDirectory: () => Promise<string | null>;
 }
 
 const DEFAULT_URL = "ws://127.0.0.1:4455";
 const RECONNECT_DELAY_MS = 3000;
+// Retrying every 3s forever while OBS simply isn't open yet (e.g. the
+// streamer hasn't launched it, or won't this session) was continuous
+// background CPU/log spam with no cap - back off exponentially instead,
+// capping so a real OBS restart is still noticed reasonably quickly.
+const MAX_RECONNECT_DELAY_MS = 60_000;
 
 // OBS's built-in "Audio Input Capture" source kinds across platforms - used
 // to auto-pick a mic input without needing a settings UI yet.
@@ -85,8 +91,22 @@ export function ObsProvider({ children }: { children: ReactNode }) {
   // rest of the session with no way back short of the manual retry click.
   // Only a deliberate disconnect() call suppresses it.
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptRef = useRef(0);
   const deliberateDisconnectRef = useRef(false);
   const connectRef = useRef<(url?: string, password?: string) => void>(() => {});
+
+  const scheduleReconnect = useCallback(() => {
+    if (deliberateDisconnectRef.current || reconnectTimerRef.current !== null) return;
+    const delay = Math.min(
+      RECONNECT_DELAY_MS * 2 ** reconnectAttemptRef.current,
+      MAX_RECONNECT_DELAY_MS,
+    );
+    reconnectAttemptRef.current += 1;
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      connectRef.current();
+    }, delay);
+  }, []);
 
   const setMicInputName = useCallback((name: string | null) => {
     micInputNameRef.current = name;
@@ -111,12 +131,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       setMicLevelValue(null);
       setSceneName(null);
       setVideoSettings(null);
-      if (!deliberateDisconnectRef.current && reconnectTimerRef.current === null) {
-        reconnectTimerRef.current = setTimeout(() => {
-          reconnectTimerRef.current = null;
-          connectRef.current();
-        }, RECONNECT_DELAY_MS);
-      }
+      scheduleReconnect();
     });
 
     obs.on("ReplayBufferStateChanged", (data) => {
@@ -173,6 +188,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
         eventSubscriptions: EventSubscription.All | EventSubscription.InputVolumeMeters,
       })
       .then(async () => {
+        reconnectAttemptRef.current = 0;
         setStatus("connected");
         const version = await obs.call("GetVersion");
         setObsVersion(version.obsVersion);
@@ -217,14 +233,9 @@ export function ObsProvider({ children }: { children: ReactNode }) {
         const message = err instanceof Error ? err.message : String(err);
         setError(message);
         console.error("[obs] connect failed:", target, err);
-        if (!deliberateDisconnectRef.current && reconnectTimerRef.current === null) {
-          reconnectTimerRef.current = setTimeout(() => {
-            reconnectTimerRef.current = null;
-            connectRef.current();
-          }, RECONNECT_DELAY_MS);
-        }
+        scheduleReconnect();
       });
-  }, [url, setMicInputName, setSceneName]);
+  }, [url, setMicInputName, setSceneName, scheduleReconnect]);
 
   connectRef.current = connect;
 
@@ -242,6 +253,18 @@ export function ObsProvider({ children }: { children: ReactNode }) {
       return imageData;
     } catch (err) {
       console.error("[obs] screenshot failed:", err);
+      return null;
+    }
+  }, [status]);
+
+  const getRecordDirectory = useCallback(async (): Promise<string | null> => {
+    const obs = obsRef.current;
+    if (!obs || status !== "connected") return null;
+    try {
+      const { recordDirectory } = await obs.call("GetRecordDirectory");
+      return recordDirectory;
+    } catch (err) {
+      console.error("[obs] failed to get record directory:", err);
       return null;
     }
   }, [status]);
@@ -311,6 +334,7 @@ export function ObsProvider({ children }: { children: ReactNode }) {
     disconnect,
     triggerManualCapture,
     captureScreenshot,
+    getRecordDirectory,
   };
 
   const backendValue: BackendState = {
@@ -335,4 +359,12 @@ export function useObs(): ObsState {
   const ctx = useContext(ObsContext);
   if (!ctx) throw new Error("useObs must be used within an ObsProvider");
   return ctx;
+}
+
+/** Non-throwing variant for components (e.g. NavRail) that render
+ * regardless of which recording backend is active - BackendRouter mounts
+ * only one of ObsProvider/StreamlabsProvider at a time, so a component
+ * shown in both cases can't assume ObsContext exists. */
+export function useObsOptional(): ObsState | null {
+  return useContext(ObsContext);
 }

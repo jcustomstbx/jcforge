@@ -2302,6 +2302,7 @@ dependencies = [
 name = "jcforge"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "cpal",
  "hex",
  "hmac 0.13.0",

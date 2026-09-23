@@ -74,6 +74,17 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     return () => clearInterval(id);
   }, []);
 
+  // Time-limited keys can expire while the app is left running - re-check
+  // the stored key on the same slow tick instead of only at launch, so an
+  // expired key locks the app without needing a restart.
+  useEffect(() => {
+    const key = settings.licenseKey;
+    if (!key) return;
+    invoke<boolean>("validate_license_key", { key })
+      .then(setIsLicensed)
+      .catch(() => {});
+  }, [now, settings.licenseKey]);
+
   const activate = useCallback(
     async (key: string): Promise<boolean> => {
       const trimmed = key.trim();

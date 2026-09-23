@@ -11,6 +11,12 @@ use license::validate_license_key;
 mod gemini;
 use gemini::analyze_video_with_gemini;
 
+mod elevenlabs;
+use elevenlabs::{generate_music_with_elevenlabs, generate_sfx_with_elevenlabs};
+
+mod claude;
+use claude::{call_claude_messages, read_frame_as_base64};
+
 #[tauri::command]
 fn get_file_size(path: String) -> Result<u64, String> {
     std::fs::metadata(&path)
@@ -34,6 +40,56 @@ fn paths_exist(paths: Vec<String>) -> Vec<bool> {
         .collect()
 }
 
+#[derive(serde::Serialize)]
+struct DiskSpace {
+    free_bytes: u64,
+    total_bytes: u64,
+}
+
+// Raw kernel32 FFI rather than pulling in a crate (sysinfo, fs2, ...) just
+// for one call - GetDiskFreeSpaceExW is always available on Windows, no
+// new dependency needed. Resolves whatever drive `path` lives on, not
+// necessarily the OS drive.
+#[cfg(windows)]
+#[tauri::command]
+fn get_disk_space(path: String) -> Result<DiskSpace, String> {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn GetDiskFreeSpaceExW(
+            lp_directory_name: *const u16,
+            lp_free_bytes_available: *mut u64,
+            lp_total_number_of_bytes: *mut u64,
+            lp_total_number_of_free_bytes: *mut u64,
+        ) -> i32;
+    }
+
+    if !std::path::Path::new(&path).exists() {
+        return Err(format!("path does not exist: {path}"));
+    }
+    let wide: Vec<u16> = OsStr::new(&path).encode_wide().chain(std::iter::once(0)).collect();
+    let mut free_bytes_available: u64 = 0;
+    let mut total_bytes: u64 = 0;
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(wide.as_ptr(), &mut free_bytes_available, &mut total_bytes, std::ptr::null_mut())
+    };
+    if ok == 0 {
+        return Err(format!(
+            "GetDiskFreeSpaceExW failed for {path}: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(DiskSpace { free_bytes: free_bytes_available, total_bytes })
+}
+
+#[cfg(not(windows))]
+#[tauri::command]
+fn get_disk_space(_path: String) -> Result<DiskSpace, String> {
+    Err("disk space lookup is only implemented on Windows".into())
+}
+
 #[tauri::command]
 fn delete_file(path: String) -> Result<(), String> {
     std::fs::remove_file(&path).map_err(|e| e.to_string())
@@ -47,6 +103,18 @@ fn read_text_file(path: String) -> Result<String, String> {
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
+// Used to import SFX files into the app's own storage - creates the
+// destination folder on first use rather than requiring the caller to set
+// it up first.
+#[tauri::command]
+fn copy_file(from: String, to: String) -> Result<(), String> {
+    if let Some(parent) = std::path::Path::new(&to).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::copy(&from, &to).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 const VIDEO_EXTENSIONS: [&str; 6] = ["mp4", "mkv", "flv", "mov", "avi", "webm"];
@@ -144,6 +212,43 @@ pub fn run() {
             CREATE INDEX idx_signal_samples_session ON signal_samples(session_id);",
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "create sfx_library table",
+            sql: "CREATE TABLE sfx_library (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                tags TEXT NOT NULL,
+                added_at TEXT NOT NULL
+            );",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "create music_library table",
+            sql: "CREATE TABLE music_library (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                tags TEXT NOT NULL,
+                added_at TEXT NOT NULL
+            );",
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 7,
+            description: "create vfx_library table",
+            sql: "CREATE TABLE vfx_library (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                filename TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                tags TEXT NOT NULL,
+                blend_mode TEXT NOT NULL,
+                added_at TEXT NOT NULL
+            );",
+            kind: MigrationKind::Up,
+        },
     ];
 
     tauri::Builder::default()
@@ -174,16 +279,22 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_file_size,
+            get_disk_space,
             path_exists,
             paths_exist,
             delete_file,
             read_text_file,
             write_text_file,
+            copy_file,
             find_newest_file_since,
             start_mic_capture,
             stop_mic_capture,
             validate_license_key,
-            analyze_video_with_gemini
+            analyze_video_with_gemini,
+            generate_sfx_with_elevenlabs,
+            generate_music_with_elevenlabs,
+            call_claude_messages,
+            read_frame_as_base64
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

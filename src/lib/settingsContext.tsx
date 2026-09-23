@@ -18,6 +18,8 @@ const DETECTION_WEIGHTS_KEY = "detection_weights";
 const LICENSE_KEY_KEY = "license_key";
 const AUTO_APPROVE_DETECTIONS_KEY = "auto_approve_detections";
 const GEMINI_API_KEY_KEY = "gemini_api_key";
+const ELEVENLABS_API_KEY_KEY = "elevenlabs_api_key";
+const ANTHROPIC_API_KEY_KEY = "anthropic_api_key";
 
 export type RecordingBackendId = "obs" | "streamlabs";
 
@@ -66,6 +68,15 @@ interface SettingsState {
   /** User's own Gemini API key for the embedded AI-editing feature - brings
    * their own key/billing, JCForge never ships a shared one. */
   geminiApiKey: string | null;
+  /** User's own ElevenLabs API key - strictly optional fallback for
+   * generating an SFX/music track on demand when nothing in the imported
+   * library fits. Absent = AI editing only ever uses the imported
+   * libraries, exactly as before this existed. */
+  elevenLabsApiKey: string | null;
+  /** User's own Anthropic API key - powers the one-shot Claude editing
+   * mode (still frames + transcript, single call, no tool use). Absent =
+   * only the Gemini mode is available. */
+  anthropicApiKey: string | null;
   loading: boolean;
   setTwitchChannel: (channel: string) => Promise<void>;
   setRecordingBackend: (backend: RecordingBackendId) => Promise<void>;
@@ -77,6 +88,8 @@ interface SettingsState {
   setLicenseKey: (key: string) => Promise<void>;
   setAutoApproveDetections: (auto: boolean) => Promise<void>;
   setGeminiApiKey: (key: string) => Promise<void>;
+  setElevenLabsApiKey: (key: string) => Promise<void>;
+  setAnthropicApiKey: (key: string) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -105,6 +118,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [licenseKey, setLicenseKeyState] = useState<string | null>(null);
   const [autoApproveDetections, setAutoApproveDetectionsState] = useState(false);
   const [geminiApiKey, setGeminiApiKeyState] = useState<string | null>(null);
+  const [elevenLabsApiKey, setElevenLabsApiKeyState] = useState<string | null>(null);
+  const [anthropicApiKey, setAnthropicApiKeyState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -119,6 +134,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       getSetting(LICENSE_KEY_KEY),
       getSetting(AUTO_APPROVE_DETECTIONS_KEY),
       getSetting(GEMINI_API_KEY_KEY),
+      getSetting(ELEVENLABS_API_KEY_KEY),
+      getSetting(ANTHROPIC_API_KEY_KEY),
     ])
       .then(
         ([
@@ -132,6 +149,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           license,
           autoApprove,
           geminiKey,
+          elevenLabsKey,
+          anthropicKey,
         ]) => {
           setTwitchChannelState(channel);
           if (backend === "obs" || backend === "streamlabs") {
@@ -145,6 +164,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           setLicenseKeyState(license);
           setAutoApproveDetectionsState(autoApprove === "true");
           setGeminiApiKeyState(geminiKey);
+          setElevenLabsApiKeyState(elevenLabsKey);
+          setAnthropicApiKeyState(anthropicKey);
         },
       )
       .finally(() => setLoading(false));
@@ -208,6 +229,18 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setGeminiApiKeyState(trimmed);
   }, []);
 
+  const setElevenLabsApiKey = useCallback(async (key: string) => {
+    const trimmed = key.trim();
+    await setSetting(ELEVENLABS_API_KEY_KEY, trimmed);
+    setElevenLabsApiKeyState(trimmed);
+  }, []);
+
+  const setAnthropicApiKey = useCallback(async (key: string) => {
+    const trimmed = key.trim();
+    await setSetting(ANTHROPIC_API_KEY_KEY, trimmed);
+    setAnthropicApiKeyState(trimmed);
+  }, []);
+
   return (
     <SettingsContext.Provider
       value={{
@@ -221,6 +254,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         licenseKey,
         autoApproveDetections,
         geminiApiKey,
+        elevenLabsApiKey,
+        anthropicApiKey,
         loading,
         setTwitchChannel,
         setRecordingBackend,
@@ -232,6 +267,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         setLicenseKey,
         setAutoApproveDetections,
         setGeminiApiKey,
+        setElevenLabsApiKey,
+        setAnthropicApiKey,
       }}
     >
       {children}

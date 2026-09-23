@@ -61,6 +61,26 @@ export function parseSrt(content: string): CaptionLine[] {
   return lines;
 }
 
+// AI-suggested caption timings (from either provider) aren't guaranteed to
+// be non-overlapping - confirmed live: two lines rendered stacked on top
+// of each other mid-clip because one's end time genuinely came in after
+// the next line's start time. The subtitles filter has no collision
+// handling of its own, so this has to be enforced before burning captions
+// in, regardless of which AI produced the timing or whether Whisper
+// re-timing ran. Assumes lines are already sorted by start time.
+const MIN_CAPTION_GAP_SECONDS = 0.05;
+
+export function preventCaptionOverlaps(lines: CaptionLine[]): CaptionLine[] {
+  const result = [...lines].sort((a, b) => a.start - b.start).map((l) => ({ ...l }));
+  for (let i = 0; i < result.length - 1; i++) {
+    const next = result[i + 1];
+    if (result[i].end > next.start - MIN_CAPTION_GAP_SECONDS) {
+      result[i].end = Math.max(result[i].start, next.start - MIN_CAPTION_GAP_SECONDS);
+    }
+  }
+  return result;
+}
+
 export function linesToSrt(lines: CaptionLine[]): string {
   return lines
     .map(
@@ -110,12 +130,17 @@ export function linesToAss(lines: CaptionLine[], baseFontSize: number): string {
     "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
   ].join("\n");
 
+  // Every line pops in (80% -> 100% scale over its first 150ms) rather
+  // than just appearing - a static caption reads as flatter than the
+  // punch-in style viral shorts typically use. \fscx/\fscy set the start
+  // scale, \t animates to 100% - both relative to when THIS event starts,
+  // so it works the same regardless of the line's absolute position in
+  // the clip.
+  const POP_IN = `\\fscx80\\fscy80\\t(0,150,\\fscx100\\fscy100)`;
   const events = lines
     .map((l) => {
-      const override =
-        l.emphasis === "high"
-          ? `{\\b1\\fs${emphasisFontSize}\\c&H00FFFF&}`
-          : "";
+      const emphasisTags = l.emphasis === "high" ? `\\b1\\fs${emphasisFontSize}\\c&H00FFFF&` : "";
+      const override = `{${POP_IN}${emphasisTags}}`;
       const text = override + escapeAssText(l.text).replace(/\r?\n/g, "\\N");
       return `Dialogue: 0,${formatAssTime(l.start)},${formatAssTime(l.end)},Default,,0,0,0,,${text}`;
     })

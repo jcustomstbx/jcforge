@@ -121,8 +121,9 @@ export function Sources() {
         ) : (
           <>
             <div className="sources-screen__mono sources-screen__mono--dim">
-              Get your remote-control token from Streamlabs Settings → Remote
-              Control.
+              Get your remote-control token from Streamlabs Settings → Mobile
+              (not "Remote Control" - Streamlabs moved it there and their own
+              docs are stale on this).
             </div>
             <form
               className="sources-screen__form sources-screen__form--stacked"

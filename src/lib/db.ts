@@ -154,6 +154,35 @@ export async function listSessions(): Promise<SessionSummary[]> {
   }));
 }
 
+const SESSION_RETENTION_DAYS = 30;
+
+/** signal_samples accumulates a row roughly every 350ms for the entire time
+ * the recording backend is connected, with nothing previously deleting old
+ * rows - a daily streamer builds an ever-growing table (hundreds of
+ * thousands of rows within weeks) that every backtest run then has to load
+ * in full. Sessions past the retention window are unlikely to still be
+ * useful for tuning (scenes/setup drift over time anyway), so drop them -
+ * called once per new session start rather than on a timer, since that's
+ * naturally an infrequent, low-stakes point to do database cleanup. */
+export async function pruneOldSessions(): Promise<void> {
+  const db = await getDb();
+  const cutoff = new Date(Date.now() - SESSION_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const stale = await db.select<{ id: number }[]>(
+    "SELECT id FROM sessions WHERE started_at < $1",
+    [cutoff],
+  );
+  if (stale.length === 0) return;
+  const ids = stale.map((s) => s.id);
+  await db.execute(
+    `DELETE FROM signal_samples WHERE session_id IN (${ids.map((_, i) => `$${i + 1}`).join(",")})`,
+    ids,
+  );
+  await db.execute(
+    `DELETE FROM sessions WHERE id IN (${ids.map((_, i) => `$${i + 1}`).join(",")})`,
+    ids,
+  );
+}
+
 export async function getSignalSamples(
   sessionId: number,
 ): Promise<SignalSample[]> {
@@ -170,4 +199,193 @@ export async function getSignalSamples(
     chat: r.chat,
     motion: r.motion,
   }));
+}
+
+export interface SfxEntry {
+  id: number;
+  /** Filename only, relative to the app's sfx storage folder - never a
+   * full path, so moving/renaming that folder can't orphan stored rows. */
+  filename: string;
+  displayName: string;
+  tags: string[];
+  addedAt: string;
+}
+
+interface SfxRow {
+  id: number;
+  filename: string;
+  display_name: string;
+  tags: string;
+  added_at: string;
+}
+
+function sfxFromRow(row: SfxRow): SfxEntry {
+  let tags: string[] = [];
+  try {
+    tags = JSON.parse(row.tags);
+  } catch {
+    tags = [];
+  }
+  return {
+    id: row.id,
+    filename: row.filename,
+    displayName: row.display_name,
+    tags,
+    addedAt: row.added_at,
+  };
+}
+
+export async function insertSfxEntry(
+  filename: string,
+  displayName: string,
+  tags: string[],
+): Promise<number> {
+  const db = await getDb();
+  const result = await db.execute(
+    "INSERT INTO sfx_library (filename, display_name, tags, added_at) VALUES ($1, $2, $3, $4)",
+    [filename, displayName, JSON.stringify(tags), new Date().toISOString()],
+  );
+  return result.lastInsertId ?? 0;
+}
+
+export async function listSfxLibrary(): Promise<SfxEntry[]> {
+  const db = await getDb();
+  const rows = await db.select<SfxRow[]>(
+    "SELECT id, filename, display_name, tags, added_at FROM sfx_library ORDER BY display_name ASC",
+  );
+  return rows.map(sfxFromRow);
+}
+
+export async function deleteSfxEntry(id: number): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM sfx_library WHERE id = $1", [id]);
+}
+
+export interface MusicEntry {
+  id: number;
+  /** Filename only, relative to the app's music storage folder. */
+  filename: string;
+  displayName: string;
+  tags: string[];
+  addedAt: string;
+}
+
+interface MusicRow {
+  id: number;
+  filename: string;
+  display_name: string;
+  tags: string;
+  added_at: string;
+}
+
+function musicFromRow(row: MusicRow): MusicEntry {
+  let tags: string[] = [];
+  try {
+    tags = JSON.parse(row.tags);
+  } catch {
+    tags = [];
+  }
+  return {
+    id: row.id,
+    filename: row.filename,
+    displayName: row.display_name,
+    tags,
+    addedAt: row.added_at,
+  };
+}
+
+export async function insertMusicEntry(
+  filename: string,
+  displayName: string,
+  tags: string[],
+): Promise<number> {
+  const db = await getDb();
+  const result = await db.execute(
+    "INSERT INTO music_library (filename, display_name, tags, added_at) VALUES ($1, $2, $3, $4)",
+    [filename, displayName, JSON.stringify(tags), new Date().toISOString()],
+  );
+  return result.lastInsertId ?? 0;
+}
+
+export async function listMusicLibrary(): Promise<MusicEntry[]> {
+  const db = await getDb();
+  const rows = await db.select<MusicRow[]>(
+    "SELECT id, filename, display_name, tags, added_at FROM music_library ORDER BY display_name ASC",
+  );
+  return rows.map(musicFromRow);
+}
+
+export async function deleteMusicEntry(id: number): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM music_library WHERE id = $1", [id]);
+}
+
+export type VfxBlendMode = "screen" | "alpha";
+
+export interface VfxEntry {
+  id: number;
+  /** Filename only, relative to the app's vfx storage folder. */
+  filename: string;
+  displayName: string;
+  tags: string[];
+  /** "screen" for a black-background additive overlay (the common case for
+   * free stock light-leak/glitch packs - pure black contributes nothing,
+   * so it reads as transparent without a real alpha channel). "alpha" for
+   * a file that actually carries transparency (ProRes 4444 MOV, alpha
+   * WebM). */
+  blendMode: VfxBlendMode;
+  addedAt: string;
+}
+
+interface VfxRow {
+  id: number;
+  filename: string;
+  display_name: string;
+  tags: string;
+  blend_mode: string;
+  added_at: string;
+}
+
+function vfxFromRow(row: VfxRow): VfxEntry {
+  let tags: string[] = [];
+  try {
+    tags = JSON.parse(row.tags);
+  } catch {
+    tags = [];
+  }
+  return {
+    id: row.id,
+    filename: row.filename,
+    displayName: row.display_name,
+    tags,
+    blendMode: row.blend_mode === "alpha" ? "alpha" : "screen",
+    addedAt: row.added_at,
+  };
+}
+
+export async function insertVfxEntry(
+  filename: string,
+  displayName: string,
+  tags: string[],
+  blendMode: VfxBlendMode,
+): Promise<number> {
+  const db = await getDb();
+  const result = await db.execute(
+    "INSERT INTO vfx_library (filename, display_name, tags, blend_mode, added_at) VALUES ($1, $2, $3, $4, $5)",
+    [filename, displayName, JSON.stringify(tags), blendMode, new Date().toISOString()],
+  );
+  return result.lastInsertId ?? 0;
+}
+
+export async function listVfxLibrary(): Promise<VfxEntry[]> {
+  const db = await getDb();
+  const rows = await db.select<VfxRow[]>(
+    "SELECT id, filename, display_name, tags, blend_mode, added_at FROM vfx_library ORDER BY display_name ASC",
+  );
+  return rows.map(vfxFromRow);
+}
+
+export async function deleteVfxEntry(id: number): Promise<void> {
+  const db = await getDb();
+  await db.execute("DELETE FROM vfx_library WHERE id = $1", [id]);
 }

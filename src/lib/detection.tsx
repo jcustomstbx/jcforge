@@ -15,7 +15,7 @@ import { useSettings } from "./settingsContext";
 import { RollingNormalizer } from "./signal";
 import { MotionDiffer } from "./motion";
 import { TwitchChatConnection } from "./twitchChat";
-import { createSession, endSession, insertSignalSample } from "./db";
+import { createSession, endSession, insertSignalSample, pruneOldSessions } from "./db";
 import {
   DOCK_ACTION_EVENT,
   DOCK_STATE_EVENT,
@@ -176,6 +176,9 @@ export function DetectionProvider({ children }: { children: ReactNode }) {
         if (active) sessionIdRef.current = id;
       })
       .catch((err) => console.error("[detection] failed to start session:", err));
+    pruneOldSessions().catch((err) =>
+      console.error("[detection] failed to prune old sessions:", err),
+    );
 
     return () => {
       active = false;

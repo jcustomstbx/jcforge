@@ -695,9 +695,9 @@ export function ClipEditor() {
                   <TuningSlider
                     label="Caption size"
                     value={captionFontSize}
-                    min={12}
-                    max={48}
-                    step={1}
+                    min={16}
+                    max={96}
+                    step={2}
                     format={(v) => `${v.toFixed(0)}px`}
                     onCommit={setCaptionFontSize}
                   />
